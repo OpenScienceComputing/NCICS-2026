@@ -1,37 +1,23 @@
 # Jupyter Kernel Setup
 
-These scripts install custom Jupyter kernels on your [Coder](https://coder.com) workspace so you can run the notebooks in this repo.
+These scripts install the Jupyter kernels you need to run the NCICS-2026 notebooks on your [Coder](https://coder.com) workspace.
 
-## Clone this repo
+## Setup (two commands)
 
 ```bash
-mkdir -p ~/repos
 git clone https://github.com/OpenScienceComputing/NCICS-2026.git ~/repos/NCICS-2026
+bash ~/repos/NCICS-2026/scripts/setup-kernels.sh
 ```
 
-## Install kernels
+Then **refresh JupyterLab** — both kernels will appear in the launcher:
 
-### protocoast-notebook
-
-Full geospatial/oceanography stack (xarray, dask, cartopy, rasterio, icechunk, and more).
-
-```bash
-bash ~/repos/NCICS-2026/scripts/setup-protocoast-kernel.sh
-```
-
-### eopf-notebook
-
-Lightweight stack for EOPF data access (xarray-eopf, hvplot, datashader, geoviews).
-
-```bash
-bash ~/repos/NCICS-2026/scripts/setup-eopf-kernel.sh
-```
-
-After the script completes, **refresh JupyterLab** and the kernel will appear in the launcher.
+| Kernel | Contents |
+|---|---|
+| `protocoast-notebook (py3.12)` | Full geospatial/oceanography stack (xarray, dask, cartopy, rasterio, icechunk, ...) |
+| `eopf-notebook (py3.12)` | EOPF data access (xarray-eopf, hvplot, datashader, geoviews) |
 
 ## Notes
 
-- Installation takes a few minutes the first time. Subsequent runs on the same workspace are fast.
-- Each kernel is installed into `~/envs/<kernel-name>/` as an isolated Python 3.12 virtual environment.
-- Kernels are registered per-user and are immediately available without a JupyterLab restart.
-- If your workspace is **rebuilt** (not just restarted), re-run the setup script to restore the kernel.
+- First-time installation takes several minutes (downloading packages). Subsequent runs are fast.
+- Each kernel lives in `~/envs/<kernel-name>/` as an isolated Python 3.12 virtual environment.
+- If your workspace is **rebuilt** (not just restarted), re-run `setup-kernels.sh` to restore the kernels.
