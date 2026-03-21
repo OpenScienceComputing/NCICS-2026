@@ -78,6 +78,7 @@ hdf5plugin
 # Intake
 intake
 intake-erddap
+cf_pandas
 intake-esm
 intake-xarray
 
