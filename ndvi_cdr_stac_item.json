@@ -3,7 +3,9 @@
   "stac_version": "1.1.0",
   "stac_extensions": [
     "https://stac-extensions.github.io/zarr/v1.1.0/schema.json",
-    "https://stac-extensions.github.io/datacube/v2.2.0/schema.json"
+    "https://stac-extensions.github.io/datacube/v2.2.0/schema.json",
+    "https://stac-extensions.github.io/virtual-assets/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/version/v1.2.0/schema.json"
   ],
   "id": "noaa-cdr-ndvi-icechunk@TF8SVRDCRCC58SKCVK20",
   "geometry": {
@@ -138,18 +140,6 @@
           7200
         ]
       },
-      "lat_bnds": {
-        "type": "data",
-        "dimensions": [
-          "latitude",
-          "nv"
-        ],
-        "attrs": {},
-        "shape": [
-          3600,
-          2
-        ]
-      },
       "TIMEOFDAY": {
         "type": "data",
         "description": "Time since Start of Data Day",
@@ -181,6 +171,18 @@
         "attrs": {},
         "shape": [
           7200,
+          2
+        ]
+      },
+      "lat_bnds": {
+        "type": "data",
+        "dimensions": [
+          "latitude",
+          "nv"
+        ],
+        "attrs": {},
+        "shape": [
+          3600,
           2
         ]
       }
