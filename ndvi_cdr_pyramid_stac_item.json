@@ -1,0 +1,165 @@
+{
+  "type": "Feature",
+  "stac_version": "1.1.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/zarr/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/datacube/v2.2.0/schema.json",
+    "https://stac-extensions.github.io/virtual-assets/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/version/v1.2.0/schema.json"
+  ],
+  "id": "noaa-cdr-ndvi-pyramid@PZAM8857J2XFJ4ZGX7NG",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -180.0,
+          -90.0
+        ],
+        [
+          180.0,
+          -90.0
+        ],
+        [
+          180.0,
+          90.0
+        ],
+        [
+          -180.0,
+          90.0
+        ],
+        [
+          -180.0,
+          -90.0
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    -180.0,
+    -90.0,
+    180.0,
+    90.0
+  ],
+  "properties": {
+    "start_datetime": "2000-01-01T00:00:00Z",
+    "end_datetime": "2000-01-05T00:00:00Z",
+    "title": "NOAA CDR NDVI \u2014 GeoZarr Multiscales Pyramid",
+    "description": "GeoZarr multiscales pyramid of the NOAA Climate Data Record (CDR) of AVHRR NDVI v5, stored as an Icechunk repository on Cloudflare R2. Levels 1\u20133 are fully materialised on R2; level 0 (full resolution) uses virtual chunk references pointing to the source Icechunk store `osc-pub/ndvi-cdr-icechunk`.",
+    "datetime": null,
+    "cube:dimensions": {
+      "time": {
+        "extent": [
+          "2000-01-01T00:00:00Z",
+          "2000-01-05T00:00:00Z"
+        ],
+        "description": "time",
+        "step": "P1DT0H0M0S",
+        "type": "temporal"
+      },
+      "longitude": {
+        "axis": "x",
+        "extent": [
+          -179.97500610351562,
+          179.97500610351562
+        ],
+        "description": "longitude",
+        "reference_system": 4326,
+        "type": "spatial"
+      },
+      "latitude": {
+        "axis": "y",
+        "extent": [
+          -89.97499084472656,
+          89.9749984741211
+        ],
+        "description": "latitude",
+        "reference_system": 4326,
+        "type": "spatial"
+      }
+    },
+    "cube:variables": {
+      "NDVI": {
+        "type": "data",
+        "description": "NOAA Climate Data Record of Normalized Difference Vegetation Index",
+        "dimensions": [
+          "time",
+          "latitude",
+          "longitude"
+        ],
+        "unit": "1",
+        "attrs": {
+          "long_name": "NOAA Climate Data Record of Normalized Difference Vegetation Index",
+          "units": "1",
+          "valid_range": [
+            -1000,
+            10000
+          ],
+          "grid_mapping": "crs",
+          "standard_name": "normalized_difference_vegetation_index"
+        },
+        "shape": [
+          5,
+          3600,
+          7200
+        ]
+      },
+      "spatial_ref": {
+        "type": "auxiliary",
+        "dimensions": [],
+        "attrs": {},
+        "shape": []
+      }
+    }
+  },
+  "links": [],
+  "assets": {
+    "ndvi-cdr-pyramid@PZAM8857J2XFJ4ZGX7NG": {
+      "href": "s3://osc-pub/ndvi-cdr-pyramid/",
+      "type": "application/vnd.zarr+icechunk",
+      "title": "NOAA CDR NDVI \u2014 GeoZarr Multiscales Pyramid (R2)",
+      "zarr:consolidated": false,
+      "zarr:zarr_format": 3,
+      "icechunk:snapshot_id": "PZAM8857J2XFJ4ZGX7NG",
+      "storage:refs": [
+        "r2-osc-pub"
+      ],
+      "vrt:hrefs": [
+        {
+          "key": "ndvi-cdr-icechunk",
+          "href": "./ndvi_cdr_pyramid_stac_item.json#/assets/ndvi-cdr-icechunk"
+        }
+      ],
+      "roles": [
+        "data",
+        "references",
+        "virtual",
+        "latest-version"
+      ]
+    },
+    "ndvi-cdr-icechunk": {
+      "href": "s3://osc-pub/ndvi-cdr-icechunk/",
+      "type": "application/vnd.zarr+icechunk",
+      "title": "NOAA CDR NDVI \u2014 Source Virtual Icechunk Store (R2)",
+      "zarr:consolidated": false,
+      "zarr:zarr_format": 3,
+      "storage:refs": [
+        "r2-osc-pub"
+      ],
+      "roles": [
+        "data",
+        "references",
+        "virtual"
+      ]
+    }
+  },
+  "storage:schemes": {
+    "r2-osc-pub": {
+      "type": "aws-s3",
+      "platform": "https://9cbdcb4884f86a6779032ae561e474a5.r2.cloudflarestorage.com",
+      "bucket": "osc-pub",
+      "region": "not-used",
+      "endpoint_url": "https://9cbdcb4884f86a6779032ae561e474a5.r2.cloudflarestorage.com"
+    }
+  }
+}
