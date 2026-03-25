@@ -132,12 +132,20 @@ map.on('load', addLayer)
 // ---------------------------------------------------------------------------
 // Controls
 // ---------------------------------------------------------------------------
+function debounce(fn, ms) {
+  let timer
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms) }
+}
+
 const timeSlider = document.getElementById('time-slider')
 const timeLabel  = document.getElementById('time-label')
+const debouncedSetTime = debounce((t) => {
+  layer?.setSelector({ time: { selected: t, type: 'index' } })
+}, 150)
 timeSlider.addEventListener('input', () => {
   state.time = Number(timeSlider.value)
   timeLabel.textContent = DATES[state.time]
-  layer?.setSelector({ time: { selected: state.time, type: 'index' } })
+  debouncedSetTime(state.time)
 })
 
 const colormapSelect = document.getElementById('colormap-select')
