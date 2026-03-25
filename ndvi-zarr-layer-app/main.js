@@ -48,6 +48,7 @@ function getStore() {
   return (_storePromise ??= IcechunkStore.open(ICECHUNK_URL, {
     branch: 'main',
     formatVersion: 'v1',
+    cache: 'no-store',
   }).catch((err) => {
     _storePromise = null
     throw err
