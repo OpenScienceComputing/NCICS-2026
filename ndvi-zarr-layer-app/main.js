@@ -115,7 +115,8 @@ async function addLayer() {
     selector: { time: { selected: state.time, type: 'index' } },
     // lat/lon dimension names as written by topozarr
     spatialDimensions: { lat: 'latitude', lon: 'longitude' },
-    latIsAscending: false,   // topozarr writes latitude 90→-90
+    latIsAscending: false,
+    bounds: [-180, -90, 180, 90],
     onLoadingStateChange: (loading) => {
       if (!loading) setStatus('ready', 'ready')
     },
