@@ -118,13 +118,11 @@ async function addLayer() {
     spatialDimensions: { lat: 'latitude', lon: 'longitude' },
     latIsAscending: false,
     bounds: [-180, -90, 180, 90],
-    onLoadingStateChange: (loading) => {
-      if (!loading) setStatus('ready', 'ready')
-    },
   })
 
   map.addLayer(layer)
   setStatus('rendering…')
+  map.once('idle', () => setStatus('ready', 'ready'))
 }
 
 map.on('load', addLayer)
