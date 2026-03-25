@@ -55,6 +55,32 @@ function getStore() {
 }
 
 // ---------------------------------------------------------------------------
+// Colormaps — zarr-layer requires an array of hex strings
+// ---------------------------------------------------------------------------
+const COLORMAPS = {
+  ylgn: [
+    '#ffffe5','#f7fcb9','#d9f0a3','#addd8e',
+    '#78c679','#41ab5d','#238443','#006837','#004529',
+  ],
+  rdylgn: [
+    '#a50026','#d73027','#f46d43','#fdae61','#fee08b',
+    '#ffffbf','#d9ef8b','#a6d96a','#66bd63','#1a9850','#006837',
+  ],
+  viridis: [
+    '#440154','#482878','#3e4989','#31688e','#26828e',
+    '#1f9e89','#35b779','#6ece58','#b5de2b','#fde725',
+  ],
+  plasma: [
+    '#0d0887','#46039f','#7201a8','#9c179e','#bd3786',
+    '#d8576b','#ed7953','#fb9f3a','#fdcf18','#f0f921',
+  ],
+  greens: [
+    '#f7fcf5','#e5f5e0','#c7e9c0','#a1d99b',
+    '#74c476','#41ab5d','#238b45','#006d2c','#00441b',
+  ],
+}
+
+// ---------------------------------------------------------------------------
 // Layer state
 // ---------------------------------------------------------------------------
 let layer = null
@@ -83,7 +109,7 @@ async function addLayer() {
     store,
     variable: 'NDVI',
     clim: state.clim,
-    colormap: state.colormap,
+    colormap: COLORMAPS[state.colormap],
     opacity: state.opacity,
     zarrVersion: 3,
     selector: { time: { selected: state.time, type: 'index' } },
@@ -115,7 +141,7 @@ timeSlider.addEventListener('input', () => {
 const colormapSelect = document.getElementById('colormap-select')
 colormapSelect.addEventListener('change', () => {
   state.colormap = colormapSelect.value
-  layer?.setColormap(state.colormap)
+  layer?.setColormap(COLORMAPS[state.colormap])
 })
 
 const climMin = document.getElementById('clim-min')
