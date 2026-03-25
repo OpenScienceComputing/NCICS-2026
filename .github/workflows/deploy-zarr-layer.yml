@@ -41,13 +41,16 @@ jobs:
           VITE_STAC_URL: https://r2-pub.openscicomp.io/ndvi_cdr_pyramid_stac_item.json
         run: npm run build
 
+      - name: Prepare Pages artifact
+        run: mkdir -p site/zarr-layer-demo && cp -r ndvi-zarr-layer-app/dist/. site/zarr-layer-demo/
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ndvi-zarr-layer-app/dist
+          path: site
 
   deploy:
     needs: build
