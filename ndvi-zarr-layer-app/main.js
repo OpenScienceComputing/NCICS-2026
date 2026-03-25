@@ -16,14 +16,14 @@ async function getIcechunkUrl() {
   const asset = Object.values(item.assets).find(a => a['icechunk:snapshot_id'])
   if (!asset) throw new Error('No icechunk asset found in STAC item')
 
-  const ref     = asset['storage:refs'][0]
-  const scheme  = item['storage:schemes'][ref]
-  const endpoint = scheme.endpoint_url
-  const bucket   = scheme.bucket
+  const ref    = asset['storage:refs'][0]
+  const scheme = item['storage:schemes'][ref]
+  const bucket = scheme.bucket
   // href is s3://bucket/prefix/ — extract the prefix
-  const prefix   = asset.href.replace(`s3://${bucket}/`, '').replace(/\/$/, '')
+  const prefix = asset.href.replace(`s3://${bucket}/`, '').replace(/\/$/, '')
 
-  return `${endpoint}/${bucket}/${prefix}`
+  // Use the public custom-domain URL (CORS-enabled) rather than the S3 endpoint
+  return `https://r2-pub.openscicomp.io/${prefix}`
 }
 
 const DATES = [
