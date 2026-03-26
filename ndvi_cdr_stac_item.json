@@ -45,7 +45,7 @@
     "start_datetime": "2000-01-01T00:00:00Z",
     "end_datetime": "2000-01-05T00:00:00Z",
     "title": "NOAA CDR NDVI \u2014 Virtual Icechunk",
-    "description": "Virtual Zarr references to the NOAA Climate Data Record (CDR) of AVHRR NDVI v5 stored as an Icechunk repository on Cloudflare R2. Chunk data remains on the original AWS S3 source bucket `noaa-cdr-ndvi-pds`.",
+    "description": "Virtual Zarr references to the NOAA Climate Data Record (CDR) of AVHRR NDVI v5 stored as an Icechunk repository on Cloudflare R2. Chunk data remains on the original AWS S3 source bucket `noaa-cdr-ndvi-pds`. You can open this dataset in xarray:\n```python\nimport requests, xarray as xr, icechunk\nitem = requests.get(\"https://r2-pub.openscicomp.io/stac/ndvi/ndvi_cdr_stac_item.json\").json()\nasset = next(v for v in item[\"assets\"].values()\n             if v.get(\"type\") == \"application/vnd.zarr+icechunk\")\nscheme = item[\"storage:schemes\"][asset[\"storage:refs\"][0]]\nstorage = icechunk.r2_storage(\n    endpoint_url=scheme[\"endpoint_url\"],\n    bucket=scheme[\"bucket\"],\n    anonymous=True,\n)\nrepo = icechunk.Repository.open(storage)\nsession = repo.readonly_session(snapshot_id=asset[\"icechunk:snapshot_id\"])\nds = xr.open_zarr(session.store, consolidated=False)\n```",
     "datetime": null,
     "cube:dimensions": {
       "time": {
@@ -162,18 +162,6 @@
           7200
         ]
       },
-      "lon_bnds": {
-        "type": "data",
-        "dimensions": [
-          "longitude",
-          "nv"
-        ],
-        "attrs": {},
-        "shape": [
-          7200,
-          2
-        ]
-      },
       "lat_bnds": {
         "type": "data",
         "dimensions": [
@@ -185,13 +173,25 @@
           3600,
           2
         ]
+      },
+      "lon_bnds": {
+        "type": "data",
+        "dimensions": [
+          "longitude",
+          "nv"
+        ],
+        "attrs": {},
+        "shape": [
+          7200,
+          2
+        ]
       }
     }
   },
   "links": [],
   "assets": {
     "ndvi-cdr-icechunk@TF8SVRDCRCC58SKCVK20": {
-      "href": "s3://osc-pub/ndvi-cdr-icechunk/",
+      "href": "s3://ndvi-cdr-icechunk/",
       "type": "application/vnd.zarr+icechunk",
       "title": "NOAA CDR NDVI \u2014 Virtual Icechunk Store (R2)",
       "zarr:consolidated": false,
@@ -200,44 +200,21 @@
       "storage:refs": [
         "r2-osc-pub"
       ],
-      "vrt:hrefs": [
-        {
-          "key": "noaa-cdr-ndvi-pds",
-          "href": "./ndvi_cdr_stac_item.json#/assets/noaa-cdr-ndvi-pds"
-        }
-      ],
       "roles": [
         "data",
         "references",
         "virtual",
         "latest-version"
       ]
-    },
-    "noaa-cdr-ndvi-pds": {
-      "href": "s3://noaa-cdr-ndvi-pds/data/",
-      "type": "application/x-netcdf",
-      "title": "NOAA CDR NDVI \u2014 Source NetCDF files (AWS S3)",
-      "storage:refs": [
-        "aws-s3-noaa-cdr-ndvi-pds"
-      ],
-      "roles": [
-        "data"
-      ]
     }
   },
   "storage:schemes": {
     "r2-osc-pub": {
       "type": "aws-s3",
-      "platform": "https://9cbdcb4884f86a6779032ae561e474a5.r2.cloudflarestorage.com",
-      "bucket": "osc-pub",
+      "platform": "https://r2-pub.openscicomp.io",
+      "bucket": "ndvi-cdr-icechunk",
       "region": "not-used",
-      "endpoint_url": "https://9cbdcb4884f86a6779032ae561e474a5.r2.cloudflarestorage.com"
-    },
-    "aws-s3-noaa-cdr-ndvi-pds": {
-      "type": "aws-s3",
-      "platform": "https://{bucket}.s3.{region}.amazonaws.com",
-      "bucket": "noaa-cdr-ndvi-pds",
-      "region": "us-east-1",
+      "endpoint_url": "https://r2-pub.openscicomp.io",
       "anonymous": true
     }
   }
