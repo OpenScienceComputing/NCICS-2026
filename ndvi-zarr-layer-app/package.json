@@ -11,7 +11,6 @@
   "dependencies": {
     "@carbonplan/icechunk-js": "^0.2.3",
     "@carbonplan/zarr-layer": "^0.4.2",
-    "flatgeobuf": "^4.4.0",
     "maplibre-gl": "^4.7.1"
   },
   "devDependencies": {

@@ -1,13 +1,11 @@
 import maplibregl from 'maplibre-gl'
 import { ZarrLayer } from '@carbonplan/zarr-layer'
 import { IcechunkStore } from '@carbonplan/icechunk-js'
-import { deserialize } from 'flatgeobuf/lib/mjs/geojson'
 
 // ---------------------------------------------------------------------------
 // Config — derive icechunk store URL from STAC item on R2
 // ---------------------------------------------------------------------------
 const STAC_URL = import.meta.env.VITE_STAC_URL
-const EUROCROPS_URL = 'https://data.source.coop/cholmes/eurocrops/eurocrops-harmonized-only.fgb'
 
 async function getIcechunkUrl() {
   const resp = await fetch(STAC_URL)
@@ -119,7 +117,6 @@ let state = {
   colormap: 'ylgn',
   clim: [-0.1, 1.0],
   opacity: 0.85,
-  eurocropsEnabled: false,
 }
 
 async function addLayer() {
@@ -154,63 +151,9 @@ async function addLayer() {
   map.addLayer(layer)
   setStatus('rendering…')
   map.once('idle', () => setStatus('ready', 'ready'))
-
-  // Add EuroCrops source and layer
-  map.addSource('eurocrops', {
-    type: 'geojson',
-    data: { type: 'FeatureCollection', features: [] }
-  })
-
-  map.addLayer({
-    id: 'eurocrops-layer',
-    type: 'fill',
-    source: 'eurocrops',
-    layout: { visibility: 'none' },
-    paint: {
-      'fill-color': '#4caf6e',
-      'fill-opacity': 0.4,
-      'fill-outline-color': '#ffffff'
-    }
-  })
 }
 
 map.on('load', addLayer)
-
-// ---------------------------------------------------------------------------
-// EuroCrops FGB handling
-// ---------------------------------------------------------------------------
-async function updateEuroCrops() {
-  if (state.eurocropsEnabled) {
-    const bounds = map.getBounds()
-    const rect = {
-      minX: bounds.getWest(),
-      minY: bounds.getSouth(),
-      maxX: bounds.getEast(),
-      maxY: bounds.getNorth()
-    }
-
-    const features = []
-    // deserializeFiltered is what we want for URL + rect
-    // In the version of flatgeobuf we have, deserialize handles URL + rect
-    try {
-      const iter = deserialize(EUROCROPS_URL, rect)
-      for await (const feature of iter) {
-        features.push(feature)
-        // Limit to 1000 features for performance
-        if (features.length >= 1000) break
-      }
-      map.getSource('eurocrops').setData({
-        type: 'FeatureCollection',
-        features: features
-      })
-    } catch (err) {
-      console.error('FGB fetch failed:', err)
-    }
-  }
-}
-
-const debouncedUpdateEuroCrops = debounce(updateEuroCrops, 500)
-map.on('moveend', debouncedUpdateEuroCrops)
 
 // ---------------------------------------------------------------------------
 // Controls
@@ -252,16 +195,4 @@ opacitySlider.addEventListener('input', () => {
   state.opacity = Number(opacitySlider.value)
   opacityLabel.textContent = state.opacity.toFixed(2)
   layer?.setOpacity(state.opacity)
-})
-
-const eurocropsToggle = document.getElementById('eurocrops-toggle')
-eurocropsToggle.addEventListener('change', () => {
-  state.eurocropsEnabled = eurocropsToggle.checked
-  if (state.eurocropsEnabled) {
-    map.setLayoutProperty('eurocrops-layer', 'visibility', 'visible')
-    updateEuroCrops()
-  } else {
-    map.setLayoutProperty('eurocrops-layer', 'visibility', 'none')
-    map.getSource('eurocrops').setData({ type: 'FeatureCollection', features: [] })
-  }
 })
