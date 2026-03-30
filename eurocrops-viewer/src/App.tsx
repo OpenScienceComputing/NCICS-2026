@@ -4,6 +4,17 @@ import { deserialize } from 'flatgeobuf/lib/mjs/geojson'
 import { FeatureCollection } from 'geojson'
 
 const EUROCROPS_URL = 'https://data.source.coop/cholmes/eurocrops/eurocrops-harmonized-only.fgb'
+
+// Chrome refuses to cache 206 Partial Content responses, causing ERR_CACHE_OPERATION_NOT_SUPPORTED
+// which makes the fetch fail. Bypass the cache for range requests to this host.
+const _origFetch = window.fetch.bind(window)
+window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url
+  if (url.includes('data.source.coop')) {
+    init = { ...init, cache: 'no-store' }
+  }
+  return _origFetch(input, init)
+}
 const MAX_FEATURES = 2000
 
 const App: React.FC = () => {
