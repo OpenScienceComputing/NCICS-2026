@@ -1,0 +1,85 @@
+name: Deploy All Apps to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Build NDVI Zarr App
+      - name: Build NDVI App
+        working-directory: ndvi-zarr-layer-app
+        env:
+          VITE_STAC_URL: https://r2-pub.openscicomp.io/ndvi_cdr_pyramid_stac_item.json
+        run: |
+          npm install
+          npm run build
+
+      # Build EuroCrops App
+      - name: Build EuroCrops App
+        working-directory: eurocrops-viewer
+        run: |
+          npm install
+          npm run build
+
+      # Assemble final distribution
+      - name: Assemble
+        run: |
+          mkdir final-dist
+          # ndvi app builds to ndvi-zarr-layer-app/dist/zarr-layer-demo
+          cp -r ndvi-zarr-layer-app/dist/zarr-layer-demo final-dist/
+          # eurocrops app builds to eurocrops-viewer/dist
+          mkdir -p final-dist/eurocrops-viewer
+          cp -r eurocrops-viewer/dist/* final-dist/eurocrops-viewer/
+          # Add a simple landing page
+          cat <<EOF > final-dist/index.html
+          <!DOCTYPE html>
+          <html>
+            <head><title>NCICS 2026 Apps</title></head>
+            <body style="font-family: sans-serif; padding: 40px; background: #111; color: #eee;">
+              <h1>NCICS 2026 Applications</h1>
+              <ul>
+                <li><a href="zarr-layer-demo/" style="color: #4caf6e;">NDVI Zarr Layer Demo</a></li>
+                <li><a href="eurocrops-viewer/" style="color: #4caf6e;">EuroCrops FlatGeobuf Viewer</a></li>
+              </ul>
+            </body>
+          </html>
+          EOF
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: final-dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
