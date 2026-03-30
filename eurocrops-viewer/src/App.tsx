@@ -12,6 +12,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [featureCount, setFeatureCount] = useState(0)
   const [selectedProps, setSelectedProps] = useState<any | null>(null)
+  const [zoom, setZoom] = useState(4)
 
   useEffect(() => {
     if (!mapContainerRef.current) return
@@ -24,6 +25,10 @@ const App: React.FC = () => {
     })
 
     map.addControl(new maplibregl.NavigationControl(), 'top-left')
+
+    map.on('zoom', () => {
+      setZoom(Math.round(map.getZoom() * 10) / 10)
+    })
 
     map.on('load', () => {
       map.addSource('eurocrops', {
@@ -79,7 +84,7 @@ const App: React.FC = () => {
     }
 
     // Only fetch if at a reasonable zoom level to avoid massive data transfer
-    if (map.getZoom() < 10) {
+    if (map.getZoom() < 7) {
       setFeatureCount(0)
       const source = map.getSource('eurocrops') as maplibregl.GeoJSONSource
       source?.setData({ type: 'FeatureCollection', features: [] })
@@ -137,12 +142,18 @@ const App: React.FC = () => {
         overflowY: 'auto'
       }}>
         <h2 style={{ fontSize: 18, marginBottom: 12 }}>EuroCrops Viewer</h2>
+        <div style={{ fontSize: 13, color: '#aaa', marginBottom: 8 }}>
+          Zoom: <span style={{ color: '#fff', fontWeight: 'bold' }}>{zoom.toFixed(1)}</span>
+        </div>
         <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
-          Zoom in to zoom level 10+ to load agricultural parcels.
+          Zoom in to level 7+ to load agricultural parcels.
         </p>
 
         {loading && <div style={{ color: '#f0a500', fontSize: 14 }}>Fetching features...</div>}
-        {!loading && (
+        {!loading && zoom < 7 && (
+          <div style={{ color: '#888', fontSize: 14 }}>Zoom in to see parcels.</div>
+        )}
+        {!loading && zoom >= 7 && (
           <div style={{ color: '#4caf6e', fontSize: 14, fontWeight: 'bold' }}>
             {featureCount === MAX_FEATURES ? `Loaded ${MAX_FEATURES}+ features` : `Found ${featureCount} features`}
           </div>
