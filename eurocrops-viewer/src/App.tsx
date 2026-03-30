@@ -94,8 +94,8 @@ const App: React.FC = () => {
       maxY: bounds.getNorth()
     }
 
-    // Only fetch if at a reasonable zoom level to avoid massive data transfer
-    if (map.getZoom() < 7) {
+    // Only fetch if zoomed in enough that parcels are visible (~25m/pixel at zoom 12)
+    if (map.getZoom() < 12) {
       setFeatureCount(0)
       const source = map.getSource('eurocrops') as maplibregl.GeoJSONSource
       source?.setData({ type: 'FeatureCollection', features: [] })
@@ -157,14 +157,14 @@ const App: React.FC = () => {
           Zoom: <span style={{ color: '#fff', fontWeight: 'bold' }}>{zoom.toFixed(1)}</span>
         </div>
         <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
-          Zoom in to level 7+ to load agricultural parcels.
+          Zoom in to level 12+ to see individual agricultural parcels. Try zooming into the Netherlands, Germany, or France.
         </p>
 
         {loading && <div style={{ color: '#f0a500', fontSize: 14 }}>Fetching features...</div>}
-        {!loading && zoom < 7 && (
+        {!loading && zoom < 12 && (
           <div style={{ color: '#888', fontSize: 14 }}>Zoom in to see parcels.</div>
         )}
-        {!loading && zoom >= 7 && (
+        {!loading && zoom >= 12 && (
           <div style={{ color: '#4caf6e', fontSize: 14, fontWeight: 'bold' }}>
             {featureCount === MAX_FEATURES ? `Loaded ${MAX_FEATURES}+ features` : `Found ${featureCount} features`}
           </div>
