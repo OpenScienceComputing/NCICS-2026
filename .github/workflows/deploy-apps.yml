@@ -24,6 +24,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: |
+            ndvi-zarr-layer-app/package-lock.json
+            eurocrops-viewer/package-lock.json
 
       # Build NDVI Zarr App
       - name: Build NDVI App
