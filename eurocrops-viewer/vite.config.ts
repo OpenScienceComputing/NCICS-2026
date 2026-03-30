@@ -7,6 +7,6 @@ export default defineConfig({
     ? '/NCICS-2026/eurocrops-viewer/'
     : '/',
   build: {
-    outDir: 'dist/eurocrops-viewer',
+    outDir: 'dist',
   },
 })
