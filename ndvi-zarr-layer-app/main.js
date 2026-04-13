@@ -154,6 +154,8 @@ async function addLayer() {
 }
 
 map.on('load', addLayer)
+map.on('moveend', () => map.triggerRepaint())
+map.on('zoomend', () => map.triggerRepaint())
 
 // ---------------------------------------------------------------------------
 // Controls
