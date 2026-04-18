@@ -201,7 +201,8 @@ async function readZarrMeta(url, store) {
           const arr = await zarr.open(rootLoc.resolve(`${firstLevel}/${vars[0]}`), { kind: 'array' })
           shape = [...arr.shape]
           dtype = String(arr.dtype)
-          dims  = arr.meta?.dimension_names
+          dims  = arr.dimension_names
+               ?? arr.meta?.dimension_names
                ?? arr.attrs?._ARRAY_DIMENSIONS
                ?? arr.attrs?.dimension_names
                ?? null
@@ -212,7 +213,8 @@ async function readZarrMeta(url, store) {
           const arr = await zarr.open(rootLoc.resolve(vars[0]), { kind: 'array' })
           shape = [...arr.shape]
           dtype = String(arr.dtype)
-          dims  = arr.meta?.dimension_names
+          dims  = arr.dimension_names
+               ?? arr.meta?.dimension_names
                ?? arr.attrs?._ARRAY_DIMENSIONS
                ?? arr.attrs?.dimension_names
                ?? null
@@ -222,6 +224,7 @@ async function readZarrMeta(url, store) {
       // ── Detect spatial dims from array dimension names ───────────────
       const LAT_NAMES = ['latitude', 'lat', 'y']
       const LON_NAMES = ['longitude', 'lon', 'x']
+      console.info('[explorer] raw dims:', dims)
       if (dims) {
         latDim = LAT_NAMES.find(n => dims.includes(n)) ?? 'latitude'
         lonDim = LON_NAMES.find(n => dims.includes(n)) ?? 'longitude'
