@@ -115,82 +115,127 @@ async function openStore(url, snap) {
 // ---------------------------------------------------------------------------
 // Read zarr metadata to discover variables and dimension sizes
 // ---------------------------------------------------------------------------
-async function readZarrMeta(url, store) {
-  // Try Zarr v3 consolidated metadata first, then v2
-  const tryFetch = async (path) => {
-    const r = await fetch(path)
-    return r.ok ? r.json() : null
-  }
 
+// Coordinate/auxiliary names to exclude from variable list
+const COORD_NAMES = new Set([
+  'latitude', 'longitude', 'lat', 'lon', 'x', 'y',
+  'time', 'spatial_ref', 'crs', 'proj', 'level',
+])
+
+// Decode a key from the store object (Icechunk or zarrita-compatible)
+async function storeGet(store, key) {
+  try {
+    const bytes = await store.get(key)
+    if (!bytes) return null
+    return JSON.parse(new TextDecoder().decode(bytes))
+  } catch {
+    return null
+  }
+}
+
+// List immediate child array/group names under a prefix via store.list()
+async function storeListChildren(store, prefix) {
+  const names = new Set()
+  try {
+    for await (const key of store.list(prefix)) {
+      // keys look like "prefix/name/zarr.json" or "prefix/name/.zarray"
+      const rel = key.slice(prefix.length).replace(/^\//, '')
+      const parts = rel.split('/')
+      if (parts.length >= 1 && parts[0]) names.add(parts[0])
+    }
+  } catch {
+    // store.list() not supported — caller will fall back
+  }
+  return [...names]
+}
+
+async function readZarrMeta(url, store) {
   let vars = []
   let timeDimSize = 1
   let shape = null
   let dtype = null
   let dims = null
 
-  // Zarr v3: zarr.json at root lists group contents
-  const v3root = await tryFetch(`${url}/zarr.json`)
-  if (v3root && v3root.zarr_format === 3) {
-    // Read consolidated metadata if present
-    const consolidated = await tryFetch(`${url}/zarr.json`) // root is also the group
-    // List arrays by trying common top-level names via store listing isn't straightforward
-    // Instead walk known patterns: members in the group node_type
-    if (v3root.node_type === 'group') {
-      // consolidated zarr v3 has no member list in zarr.json itself;
-      // try to read chunk manifest / fall back to fetching common names
-      // Best effort: check for a .zmetadata or consolidated metadata
-    }
-    // Try consolidated metadata endpoint
-    const czm = await tryFetch(`${url}/.zmetadata`)
-    if (czm && czm.metadata) {
-      vars = Object.keys(czm.metadata)
-        .filter(k => k.endsWith('/.zarray') || k.endsWith('/zarr.json'))
-        .map(k => k.replace(/\/(\.zarray|zarr\.json)$/, ''))
-        .filter(k => !k.includes('/') && k !== '')
-    }
-  }
+  // ── Path 1: read through the store object (works for Icechunk) ──────
+  if (store) {
+    const rootMeta = await storeGet(store, 'zarr.json')
+    if (rootMeta) {
+      const attrs = rootMeta.attributes || {}
+      const multiscales = attrs.multiscales
 
-  // Zarr v2: .zmetadata consolidated
-  if (vars.length === 0) {
-    const czm = await tryFetch(`${url}/.zmetadata`)
-    if (czm && czm.metadata) {
-      vars = Object.keys(czm.metadata)
-        .filter(k => k.endsWith('/.zarray'))
-        .map(k => k.replace('/.zarray', ''))
-        .filter(k => !k.includes('/') && k !== '')
-    }
-  }
+      if (multiscales?.length > 0) {
+        // GeoZarr / topozarr DataTree: variables live inside level groups
+        const firstLevel = multiscales[0]?.datasets?.[0]?.path ?? '0'
+        const prefix = firstLevel + '/'
+        const children = await storeListChildren(store, prefix)
+        vars = children.filter(n => !COORD_NAMES.has(n))
 
-  // If we found a variable, read its metadata for shape/dtype/dims
-  if (vars.length > 0) {
-    const firstVar = vars[0]
-    const zarray = await tryFetch(`${url}/${firstVar}/.zarray`)
-      || await tryFetch(`${url}/${firstVar}/zarr.json`)
-    const zattrs = await tryFetch(`${url}/${firstVar}/.zattrs`)
-      || await tryFetch(`${url}/${firstVar}/zarr.json`)
+        // Get shape/dtype/dims from first data variable at first level
+        if (vars.length > 0) {
+          const arrMeta = await storeGet(store, `${firstLevel}/${vars[0]}/zarr.json`)
+          if (arrMeta) {
+            shape = arrMeta.shape
+            dtype = arrMeta.data_type ?? arrMeta.dtype
+            dims  = arrMeta.dimension_names ?? arrMeta.attributes?._ARRAY_DIMENSIONS
+          }
+        }
+      } else if (rootMeta.node_type === 'group') {
+        // Flat group: variables are direct children of root
+        const children = await storeListChildren(store, '')
+        vars = children.filter(n => !COORD_NAMES.has(n))
 
-    if (zarray) {
-      shape = zarray.shape || zarray.shape
-      dtype = zarray.dtype || zarray.data_type
-    }
-    if (zattrs) {
-      dims = zattrs._ARRAY_DIMENSIONS || zattrs.dimension_names
-    }
-
-    // Try to get time coord labels
-    if (dims) {
-      const tDimIdx = dims.findIndex(d => d === 'time' || d === 't')
-      if (tDimIdx >= 0 && shape) {
-        timeDimSize = shape[tDimIdx]
-        const timeArr = await tryFetch(`${url}/time/.zarray`)
-        if (timeArr) {
-          // time coordinate exists — try to read its data chunk
-          // For small time arrays, chunk 0 contains all values
-          const timeAttrs = await tryFetch(`${url}/time/.zattrs`)
-          timeCoords = null // would need zarr decode; leave as indices for now
+        if (vars.length > 0) {
+          const arrMeta = await storeGet(store, `${vars[0]}/zarr.json`)
+          if (arrMeta) {
+            shape = arrMeta.shape
+            dtype = arrMeta.data_type ?? arrMeta.dtype
+            dims  = arrMeta.dimension_names ?? arrMeta.attributes?._ARRAY_DIMENSIONS
+          }
         }
       }
     }
+  }
+
+  // ── Path 2: HTTP fetches for plain Zarr over HTTP ────────────────────
+  const tryFetch = async (path) => {
+    try {
+      const r = await fetch(path)
+      return r.ok ? r.json() : null
+    } catch { return null }
+  }
+
+  if (vars.length === 0) {
+    // Zarr v2 consolidated metadata
+    const czm = await tryFetch(`${url}/.zmetadata`)
+    if (czm?.metadata) {
+      vars = Object.keys(czm.metadata)
+        .filter(k => k.endsWith('/.zarray'))
+        .map(k => k.replace('/.zarray', ''))
+        .filter(k => !k.includes('/') && k !== '' && !COORD_NAMES.has(k))
+    }
+  }
+
+  if (vars.length === 0) {
+    // Zarr v3 root zarr.json via HTTP (works for plain HTTP Zarr stores)
+    const v3root = await tryFetch(`${url}/zarr.json`)
+    if (v3root?.zarr_format === 3) {
+      const multiscales = v3root.attributes?.multiscales
+      if (multiscales?.length > 0) {
+        const firstLevel = multiscales[0]?.datasets?.[0]?.path ?? '0'
+        // Try reading consolidated metadata embedded in root (zarr-python style)
+        const nodes = v3root.consolidated_metadata?.metadata ?? {}
+        vars = Object.keys(nodes)
+          .filter(k => k.startsWith(firstLevel + '/') && nodes[k].node_type === 'array')
+          .map(k => k.slice(firstLevel.length + 1).split('/')[0])
+          .filter(n => n && !COORD_NAMES.has(n))
+      }
+    }
+  }
+
+  // ── Resolve time dimension size from shape/dims ──────────────────────
+  if (dims && shape) {
+    const tIdx = dims.findIndex(d => d === 'time' || d === 't')
+    if (tIdx >= 0) timeDimSize = shape[tIdx]
   }
 
   return { vars, shape, dtype, dims, timeDimSize }
