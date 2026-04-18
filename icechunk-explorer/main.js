@@ -30,7 +30,7 @@ function getParams() {
     snap: p.get('snap') || '',
     varName: p.get('var') || '',
     t:    parseInt(p.get('t') || '0', 10),
-    clim: p.get('clim') ? p.get('clim').split(',').map(Number) : null,
+    clim: p.get('clim') ? p.get('clim').split(',').map(Number) : [0, 1],
     cm:   p.get('cm')   || 'viridis',
   }
 }
