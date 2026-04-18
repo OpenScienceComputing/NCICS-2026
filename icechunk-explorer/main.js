@@ -149,6 +149,10 @@ async function readZarrMeta(url, store) {
   let shape = null
   let dtype = null
   let dims = null
+  let latDim = 'latitude'
+  let lonDim = 'longitude'
+  let bounds = [-180, -90, 180, 90]
+  let latIsAscending = false
 
   // ── Path 1: use zarrita (same pattern as zarr-layer) ────────────────
   if (store) {
@@ -185,8 +189,10 @@ async function readZarrMeta(url, store) {
         return children.filter(n => n && !COORD_NAMES.has(n) && !n.includes('.'))
       }
 
+      let coordPrefix = ''
       if (levelPaths.length > 0) {
         const firstLevel = levelPaths[0]
+        coordPrefix = firstLevel + '/'
         vars = await listVars(firstLevel)
         console.info('vars discovered:', vars)
 
@@ -212,6 +218,38 @@ async function readZarrMeta(url, store) {
                ?? null
         }
       }
+
+      // ── Detect spatial dims from array dimension names ───────────────
+      const LAT_NAMES = ['latitude', 'lat', 'y']
+      const LON_NAMES = ['longitude', 'lon', 'x']
+      if (dims) {
+        latDim = LAT_NAMES.find(n => dims.includes(n)) ?? 'latitude'
+        lonDim = LON_NAMES.find(n => dims.includes(n)) ?? 'longitude'
+      }
+
+      // ── Read 1D coordinate arrays to determine bounds + direction ────
+      for (const [dim, isLat] of [[latDim, true], [lonDim, false]]) {
+        try {
+          const cArr = await zarr.open(rootLoc.resolve(coordPrefix + dim), { kind: 'array' })
+          if (cArr.shape.length === 1 && cArr.shape[0] <= 50000) {
+            const { data } = await zarr.get(cArr, null)
+            const v0 = data[0], v1 = data[data.length - 1]
+            if (isLat) {
+              latIsAscending = v1 > v0
+              bounds[1] = Math.min(v0, v1)
+              bounds[3] = Math.max(v0, v1)
+            } else {
+              bounds[0] = Math.min(v0, v1)
+              bounds[2] = Math.max(v0, v1)
+            }
+          }
+        } catch {}
+      }
+      // Reject bounds that look like projected coordinates (not degrees)
+      if (bounds[1] < -90 || bounds[3] > 90 || bounds[0] < -360 || bounds[2] > 360) {
+        bounds = [-180, -90, 180, 90]
+      }
+
     } catch (err) {
       console.warn('zarrita metadata read failed:', err)
     }
@@ -252,7 +290,7 @@ async function readZarrMeta(url, store) {
     timeDimSize = shape[0]
   }
 
-  return { vars, shape, dtype, dims, timeDimSize }
+  return { vars, shape, dtype, dims, timeDimSize, latDim, lonDim, bounds, latIsAscending }
 }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +333,12 @@ async function renderLayer(url, store, varName, state) {
     layer = null
   }
 
+  const latDim = currentMeta.latDim || 'latitude'
+  const lonDim = currentMeta.lonDim || 'longitude'
+  const bounds = currentMeta.bounds || [-180, -90, 180, 90]
+  const latIsAscending = currentMeta.latIsAscending ?? false
+  console.info(`[explorer] spatialDims lat=${latDim} lon=${lonDim} bounds=${bounds} latAsc=${latIsAscending}`)
+
   layer = new ZarrLayer({
     id: 'explorer',
     source: url,
@@ -305,9 +349,9 @@ async function renderLayer(url, store, varName, state) {
     opacity: state.opacity ?? 0.85,
     zarrVersion: 3,
     selector: { time: { selected: state.t, type: 'index' } },
-    spatialDimensions: { lat: 'latitude', lon: 'longitude' },
-    latIsAscending: false,
-    bounds: [-180, -90, 180, 90],
+    spatialDimensions: { lat: latDim, lon: lonDim },
+    latIsAscending,
+    bounds,
   })
 
   map.addLayer(layer)
