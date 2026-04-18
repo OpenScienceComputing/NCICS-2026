@@ -182,12 +182,23 @@ async function readZarrMeta(url, store) {
       const attrs = rootMeta.attributes || {}
       const multiscales = attrs.multiscales
 
-      if (multiscales?.length > 0) {
+      // Handle two multiscales formats:
+      //   OME-NGFF array:  multiscales = [{datasets: [{path: '0'}]}]
+      //   topozarr object: multiscales = {layout: [{asset: '0'}]}
+      let levelPaths = []
+      if (Array.isArray(multiscales) && multiscales.length > 0) {
+        levelPaths = (multiscales[0].datasets || []).map(d => d.path).filter(Boolean)
+      } else if (multiscales?.layout?.length > 0) {
+        levelPaths = multiscales.layout.map(l => l.asset).filter(Boolean)
+      }
+
+      if (levelPaths.length > 0) {
         // GeoZarr / topozarr DataTree: variables live inside level groups
-        const firstLevel = multiscales[0]?.datasets?.[0]?.path ?? '0'
+        const firstLevel = levelPaths[0]
         const prefix = firstLevel + '/'
         const children = await storeListChildren(store, prefix)
         vars = children.filter(n => !COORD_NAMES.has(n))
+        console.info('vars from multiscales level:', firstLevel, vars)
 
         // Get shape/dtype/dims from first data variable at first level
         if (vars.length > 0) {
