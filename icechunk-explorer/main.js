@@ -145,25 +145,37 @@ const COORD_NAMES = new Set([
 async function storeGet(store, key) {
   try {
     const bytes = await store.get(key)
+    console.debug(`storeGet(${key}):`, bytes, typeof bytes)
     if (!bytes) return null
-    return JSON.parse(new TextDecoder().decode(bytes))
-  } catch {
+    // bytes may be Uint8Array, Buffer, or ArrayBuffer
+    const buf = bytes instanceof Uint8Array ? bytes
+               : bytes.buffer ? new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+               : new Uint8Array(bytes)
+    return JSON.parse(new TextDecoder().decode(buf))
+  } catch (err) {
+    console.warn(`storeGet(${key}) failed:`, err)
     return null
   }
 }
 
 // List immediate child array/group names under a prefix via store.list()
 async function storeListChildren(store, prefix) {
+  const normPrefix = prefix.endsWith('/') ? prefix : prefix + '/'
   const names = new Set()
   try {
-    for await (const key of store.list(prefix)) {
-      // keys look like "prefix/name/zarr.json" or "prefix/name/.zarray"
-      const rel = key.slice(prefix.length).replace(/^\//, '')
-      const parts = rel.split('/')
-      if (parts.length >= 1 && parts[0]) names.add(parts[0])
+    // list() may return AsyncIterator or Promise<string[]> — handle both
+    const result = store.list(normPrefix)
+    const keys = (result && typeof result[Symbol.asyncIterator] === 'function')
+      ? result : await result
+    for await (const key of keys) {
+      if (!key.startsWith(normPrefix)) continue  // list() may ignore prefix arg
+      const rel = key.slice(normPrefix.length)
+      const firstPart = rel.split('/')[0]
+      if (firstPart) names.add(firstPart)
     }
-  } catch {
-    // store.list() not supported — caller will fall back
+    console.debug(`storeListChildren(${normPrefix}):`, [...names])
+  } catch (err) {
+    console.warn(`storeListChildren(${normPrefix}) failed:`, err)
   }
   return [...names]
 }
