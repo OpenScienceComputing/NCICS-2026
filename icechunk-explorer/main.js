@@ -303,6 +303,8 @@ async function renderLayer(url, store, varName, state) {
     opacity: state.opacity ?? 0.85,
     zarrVersion: 3,
     selector: { time: { selected: state.t, type: 'index' } },
+    spatialDimensions: { lat: 'latitude', lon: 'longitude' },
+    latIsAscending: false,
     bounds: [-180, -90, 180, 90],
   })
 
