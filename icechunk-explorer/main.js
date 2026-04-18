@@ -1,7 +1,8 @@
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { ZarrLayer } from '@carbonplan/zarr-layer'
-import { IcechunkStore } from '@carbonplan/icechunk-js'
+import { Repository } from '@earthmover/icechunk'
+import { createFetchStorage } from '@earthmover/icechunk/fetch-storage'
 
 // ---------------------------------------------------------------------------
 // Colormaps
@@ -97,15 +98,15 @@ let layer = null
 let timeCoords = null  // array of coordinate labels if available
 
 // ---------------------------------------------------------------------------
-// Open store — tries IcechunkStore first, falls back to plain Zarr URL
+// Open store — tries Icechunk first, falls back to plain Zarr URL
 // ---------------------------------------------------------------------------
 async function openStore(url, snap) {
   try {
-    const opts = snap
-      ? { snapshotId: snap, formatVersion: 'v1', cache: 'no-store' }
-      : { branch: 'main',  formatVersion: 'v1', cache: 'no-store' }
-    const store = await IcechunkStore.open(url, opts)
-    return { store, isIcechunk: true }
+    const storage = createFetchStorage(url)
+    const repo = await Repository.open(storage)
+    const sessionOpts = snap ? { snapshotId: snap } : { branch: 'main' }
+    const session = await repo.readonlySession(sessionOpts)
+    return { store: session.store, isIcechunk: true }
   } catch {
     // Not an Icechunk store — ZarrLayer accepts a plain URL string
     return { store: null, isIcechunk: false }

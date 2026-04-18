@@ -5,15 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "mkdir -p public && cp node_modules/coi-serviceworker/coi-serviceworker.js public/ && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@carbonplan/icechunk-js": "^0.2.3",
     "@carbonplan/zarr-layer": "^0.4.2",
+    "@earthmover/icechunk": "alpha",
+    "@earthmover/icechunk-wasm32-wasi": "^2.0.0-alpha.14",
+    "coi-serviceworker": "^0.1.7",
     "maplibre-gl": "^4.7.1"
   },
   "devDependencies": {
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vite-plugin-top-level-await": "^1.4.0",
+    "vite-plugin-wasm": "^3.0.0"
   }
 }
