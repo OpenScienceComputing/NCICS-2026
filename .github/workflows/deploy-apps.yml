@@ -41,6 +41,8 @@ jobs:
       # Build Icechunk Explorer
       - name: Build Icechunk Explorer
         working-directory: icechunk-explorer
+        env:
+          npm_config_force: "true"
         run: |
           npm install
           npm run build
