@@ -143,6 +143,67 @@ const COORD_NAMES = new Set([
   'time', 'spatial_ref', 'crs', 'proj', 'level',
 ])
 
+// Build a proj4 string from a CF grid_mapping variable's attributes.
+// Returns null for latitude_longitude or unsupported projections.
+function cfToProjString(a) {
+  const name = a.grid_mapping_name
+  if (!name || name === 'latitude_longitude') return null
+
+  const fe = a.false_easting  ?? 0
+  const fn = a.false_northing ?? 0
+
+  let earth = ''
+  if (a.earth_radius != null)      earth = ` +R=${a.earth_radius}`
+  else if (a.semi_major_axis != null) {
+    earth = ` +a=${a.semi_major_axis}`
+    if (a.semi_minor_axis != null)      earth += ` +b=${a.semi_minor_axis}`
+    else if (a.inverse_flattening != null) earth += ` +rf=${a.inverse_flattening}`
+  }
+
+  const sp = a.standard_parallel
+  const lat1 = Array.isArray(sp) ? sp[0] : sp
+  const lat2 = Array.isArray(sp) ? (sp[1] ?? sp[0]) : sp
+
+  if (name === 'lambert_conformal_conic') {
+    const lon0 = a.longitude_of_central_meridian ?? 0
+    const lat0 = a.latitude_of_projection_origin ?? 0
+    return `+proj=lcc +lat_1=${lat1} +lat_2=${lat2} +lat_0=${lat0} +lon_0=${lon0} +x_0=${fe} +y_0=${fn}${earth} +units=m +no_defs`
+  }
+  if (name === 'polar_stereographic') {
+    const lon0 = a.straight_vertical_longitude_from_pole ?? a.longitude_of_projection_origin ?? 0
+    const lat0 = a.latitude_of_projection_origin ?? 90
+    const k    = a.scale_factor_at_projection_origin ?? 1
+    return `+proj=stere +lat_0=${lat0} +lon_0=${lon0} +k=${k} +x_0=${fe} +y_0=${fn}${earth} +units=m +no_defs`
+  }
+  if (name === 'mercator') {
+    const lon0 = a.longitude_of_projection_origin ?? 0
+    const k    = a.scale_factor_at_projection_origin ?? 1
+    return `+proj=merc +lon_0=${lon0} +k=${k} +x_0=${fe} +y_0=${fn}${earth} +units=m +no_defs`
+  }
+  if (name === 'transverse_mercator') {
+    const lon0 = a.longitude_of_central_meridian ?? 0
+    const lat0 = a.latitude_of_projection_origin ?? 0
+    const k    = a.scale_factor_at_central_meridian ?? 1
+    return `+proj=tmerc +lat_0=${lat0} +lon_0=${lon0} +k=${k} +x_0=${fe} +y_0=${fn}${earth} +units=m +no_defs`
+  }
+  if (name === 'albers_conical_equal_area') {
+    const lon0 = a.longitude_of_central_meridian ?? 0
+    const lat0 = a.latitude_of_projection_origin ?? 0
+    return `+proj=aea +lat_1=${lat1} +lat_2=${lat2} +lat_0=${lat0} +lon_0=${lon0} +x_0=${fe} +y_0=${fn}${earth} +units=m +no_defs`
+  }
+  if (name === 'lambert_azimuthal_equal_area') {
+    const lon0 = a.longitude_of_projection_origin ?? 0
+    const lat0 = a.latitude_of_projection_origin ?? 0
+    return `+proj=laea +lat_0=${lat0} +lon_0=${lon0} +x_0=${fe} +y_0=${fn}${earth} +units=m +no_defs`
+  }
+  if (name === 'sinusoidal') {
+    const lon0 = a.longitude_of_central_meridian ?? 0
+    return `+proj=sinu +lon_0=${lon0} +x_0=${fe} +y_0=${fn}${earth} +units=m +no_defs`
+  }
+  console.warn('[explorer] unsupported grid_mapping_name:', name)
+  return null
+}
+
 async function readZarrMeta(url, store) {
   let vars = []
   let timeDimSize = 1
@@ -153,6 +214,8 @@ async function readZarrMeta(url, store) {
   let lonDim = 'longitude'
   let bounds = [-180, -90, 180, 90]
   let latIsAscending = false
+  let proj4String = null
+  let gridMappingVarName = null
 
   // ── Path 1: use zarrita (same pattern as zarr-layer) ────────────────
   if (store) {
@@ -206,6 +269,7 @@ async function readZarrMeta(url, store) {
                ?? arr.attrs?._ARRAY_DIMENSIONS
                ?? arr.attrs?.dimension_names
                ?? null
+          gridMappingVarName = arr.attrs?.grid_mapping ?? null
         }
       } else {
         vars = await listVars('')
@@ -218,6 +282,7 @@ async function readZarrMeta(url, store) {
                ?? arr.attrs?._ARRAY_DIMENSIONS
                ?? arr.attrs?.dimension_names
                ?? null
+          gridMappingVarName = arr.attrs?.grid_mapping ?? null
         }
       }
 
@@ -228,6 +293,15 @@ async function readZarrMeta(url, store) {
       if (dims) {
         latDim = LAT_NAMES.find(n => dims.includes(n)) ?? 'latitude'
         lonDim = LON_NAMES.find(n => dims.includes(n)) ?? 'longitude'
+      }
+
+      // ── Read CF grid_mapping → proj4 string ─────────────────────────
+      if (gridMappingVarName) {
+        try {
+          const gmArr = await zarr.open(rootLoc.resolve(coordPrefix + gridMappingVarName), { kind: 'array' })
+          proj4String = cfToProjString(gmArr.attrs || {})
+          console.info('[explorer] grid_mapping:', gridMappingVarName, '→', proj4String)
+        } catch {}
       }
 
       // ── Read 1D coordinate arrays to determine bounds + direction ────
@@ -248,8 +322,8 @@ async function readZarrMeta(url, store) {
           }
         } catch {}
       }
-      // Reject bounds that look like projected coordinates (not degrees)
-      if (bounds[1] < -90 || bounds[3] > 90 || bounds[0] < -360 || bounds[2] > 360) {
+      // For geographic data, validate bounds are in degrees; for projected, keep CRS units
+      if (!proj4String && (bounds[1] < -90 || bounds[3] > 90 || bounds[0] < -360 || bounds[2] > 360)) {
         bounds = [-180, -90, 180, 90]
       }
 
@@ -293,7 +367,7 @@ async function readZarrMeta(url, store) {
     timeDimSize = shape[0]
   }
 
-  return { vars, shape, dtype, dims, timeDimSize, latDim, lonDim, bounds, latIsAscending }
+  return { vars, shape, dtype, dims, timeDimSize, latDim, lonDim, bounds, latIsAscending, proj4String }
 }
 
 // ---------------------------------------------------------------------------
@@ -336,11 +410,12 @@ async function renderLayer(url, store, varName, state) {
     layer = null
   }
 
-  const latDim = currentMeta.latDim || 'latitude'
-  const lonDim = currentMeta.lonDim || 'longitude'
-  const bounds = currentMeta.bounds || [-180, -90, 180, 90]
+  const latDim        = currentMeta.latDim     || 'latitude'
+  const lonDim        = currentMeta.lonDim     || 'longitude'
+  const bounds        = currentMeta.bounds     || [-180, -90, 180, 90]
   const latIsAscending = currentMeta.latIsAscending ?? false
-  console.info(`[explorer] spatialDims lat=${latDim} lon=${lonDim} bounds=${bounds} latAsc=${latIsAscending}`)
+  const proj4String   = currentMeta.proj4String || null
+  console.info(`[explorer] lat=${latDim} lon=${lonDim} bounds=${bounds} latAsc=${latIsAscending} proj4=${proj4String}`)
 
   layer = new ZarrLayer({
     id: 'explorer',
@@ -355,6 +430,7 @@ async function renderLayer(url, store, varName, state) {
     spatialDimensions: { lat: latDim, lon: lonDim },
     latIsAscending,
     bounds,
+    ...(proj4String ? { proj4: proj4String } : {}),
   })
 
   map.addLayer(layer)
