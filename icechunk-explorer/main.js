@@ -152,8 +152,9 @@ async function readZarrMeta(url, store) {
   // ── Path 1: use zarrita (same pattern as zarr-layer) ────────────────
   if (store) {
     try {
-      const root = await zarr.open(zarr.root(store), { kind: 'group' })
-      const attrs = root.attrs || {}
+      const rootLoc = zarr.root(store)
+      const rootGroup = await zarr.open(rootLoc, { kind: 'group' })
+      const attrs = rootGroup.attrs || {}
       const multiscales = attrs.multiscales
 
       // Parse level paths — handle OME-NGFF array and topozarr object formats
@@ -164,47 +165,39 @@ async function readZarrMeta(url, store) {
         levelPaths = multiscales.layout.map(l => l.asset).filter(Boolean)
       }
 
-      if (levelPaths.length > 0) {
-        // Multiscale DataTree: variables are arrays inside each level group
-        const firstLevel = levelPaths[0]
-        const levelGroup = await zarr.open(root.resolve(firstLevel), { kind: 'group' })
-
-        // list() all keys and extract immediate children of the level group
-        const prefix = firstLevel + '/'
+      // Extract variable names from store key listing, excluding coords and metadata files
+      const listVars = async (prefix) => {
         const allKeys = await store.list()
         const children = new Set()
+        const norm = prefix ? prefix + '/' : ''
         for (const key of allKeys) {
-          if (!key.startsWith(prefix)) continue
-          const name = key.slice(prefix.length).split('/')[0]
+          if (norm && !key.startsWith(norm)) continue
+          const name = key.slice(norm.length).split('/')[0]
           if (name) children.add(name)
         }
-        vars = [...children].filter(n => !COORD_NAMES.has(n))
+        // Filter coords and any zarr metadata filenames (contain '.' like zarr.json)
+        return [...children].filter(n => !COORD_NAMES.has(n) && !n.includes('.'))
+      }
+
+      if (levelPaths.length > 0) {
+        const firstLevel = levelPaths[0]
+        vars = await listVars(firstLevel)
         console.info('vars discovered:', vars)
 
-        // Get shape/dtype/dims via zarrita
         if (vars.length > 0) {
-          const arr = await zarr.open(levelGroup.resolve(vars[0]), { kind: 'array' })
+          // Use rootLoc (Location) for resolve, not the opened Group
+          const arr = await zarr.open(rootLoc.resolve(`${firstLevel}/${vars[0]}`), { kind: 'array' })
           shape = [...arr.shape]
           dtype = String(arr.dtype)
-          // zarr v3: dimension_names is top-level in zarr.json, exposed via arr.meta
-          // zarr v2 compat: _ARRAY_DIMENSIONS in attributes
           dims  = arr.meta?.dimension_names
                ?? arr.attrs?._ARRAY_DIMENSIONS
                ?? arr.attrs?.dimension_names
                ?? null
         }
       } else {
-        // Flat group: variables are direct children of root
-        const allKeys = await store.list()
-        const children = new Set()
-        for (const key of allKeys) {
-          const name = key.split('/')[0]
-          if (name && !name.startsWith('zarr') && !name.startsWith('.')) children.add(name)
-        }
-        vars = [...children].filter(n => !COORD_NAMES.has(n))
-
+        vars = await listVars('')
         if (vars.length > 0) {
-          const arr = await zarr.open(root.resolve(vars[0]), { kind: 'array' })
+          const arr = await zarr.open(rootLoc.resolve(vars[0]), { kind: 'array' })
           shape = [...arr.shape]
           dtype = String(arr.dtype)
           dims  = arr.meta?.dimension_names
