@@ -194,10 +194,14 @@ async function readZarrMeta(url, store) {
           const arr = await zarr.open(rootLoc.resolve(`${firstLevel}/${vars[0]}`), { kind: 'array' })
           shape = [...arr.shape]
           dtype = String(arr.dtype)
+          console.debug('arr keys:', Object.keys(arr))
+          console.debug('arr.meta:', arr.meta)
+          console.debug('arr.attrs:', arr.attrs)
           dims  = arr.meta?.dimension_names
                ?? arr.attrs?._ARRAY_DIMENSIONS
                ?? arr.attrs?.dimension_names
                ?? null
+          console.debug('dims:', dims, 'shape:', shape)
         }
       } else {
         vars = await listVars('')
