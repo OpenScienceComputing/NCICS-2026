@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Icechunk Explorer</title>
+    <link rel="icon" href="data:,">
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: 'Menlo', 'Monaco', monospace;
+        background: #1b1e23;
+        color: #e0e0e0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── top bar ── */
+      header {
+        padding: 8px 12px;
+        background: #12151a;
+        border-bottom: 1px solid #2e3440;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+        flex-wrap: wrap;
+      }
+
+      header h1 {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        white-space: nowrap;
+        color: #e0e0e0;
+      }
+
+      #url-input {
+        flex: 1;
+        min-width: 200px;
+        background: #1e222a;
+        border: 1px solid #2e3440;
+        color: #e0e0e0;
+        padding: 5px 8px;
+        font-size: 13px;
+        font-family: inherit;
+        border-radius: 3px;
+      }
+      #url-input::placeholder { color: #4a5568; }
+
+      #snap-input {
+        width: 230px;
+        background: #1e222a;
+        border: 1px solid #2e3440;
+        color: #e0e0e0;
+        padding: 5px 8px;
+        font-size: 13px;
+        font-family: inherit;
+        border-radius: 3px;
+      }
+      #snap-input::placeholder { color: #4a5568; }
+
+      select {
+        background: #1e222a;
+        border: 1px solid #2e3440;
+        color: #e0e0e0;
+        padding: 5px 8px;
+        font-size: 13px;
+        font-family: inherit;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+
+      button {
+        background: #2a5c3f;
+        border: 1px solid #4caf6e;
+        color: #e0e0e0;
+        padding: 5px 14px;
+        font-size: 13px;
+        font-family: inherit;
+        border-radius: 3px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      button:hover { background: #346e4d; }
+      button:disabled { opacity: 0.4; cursor: default; }
+
+      #status {
+        font-size: 13px;
+        color: #f0a500;
+        white-space: nowrap;
+        margin-left: auto;
+      }
+      #status.ready { color: #4caf6e; }
+      #status.error { color: #e05c5c; }
+
+      /* ── body ── */
+      main {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      #map { flex: 1; }
+
+      aside {
+        width: 220px;
+        background: #12151a;
+        border-left: 1px solid #2e3440;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        overflow-y: auto;
+        flex-shrink: 0;
+      }
+
+      .control-group label {
+        display: block;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #6c7a8c;
+        margin-bottom: 6px;
+      }
+
+      .control-group select,
+      .control-group input[type="range"] { width: 100%; }
+
+      .control-group input[type="range"] { accent-color: #4caf6e; }
+
+      .clim-row { display: flex; gap: 6px; }
+      .clim-row input[type="number"] {
+        width: 50%;
+        background: #1e222a;
+        border: 1px solid #2e3440;
+        color: #e0e0e0;
+        padding: 4px 6px;
+        font-size: 13px;
+        font-family: inherit;
+        border-radius: 3px;
+      }
+
+      .value-display {
+        font-size: 12px;
+        color: #8899aa;
+        margin-top: 4px;
+        text-align: right;
+      }
+
+      .divider { border: none; border-top: 1px solid #2e3440; }
+
+      .meta {
+        font-size: 12px;
+        color: #4a5568;
+        line-height: 1.6;
+        word-break: break-all;
+      }
+      .meta strong { color: #6c7a8c; font-size: 13px; display: block; margin-bottom: 2px; }
+
+      /* hide sidebar controls until a layer is loaded */
+      #layer-controls { display: none; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Icechunk Explorer</h1>
+      <input id="url-input" type="text"
+        placeholder="Icechunk or Zarr store URL…" />
+      <input id="snap-input" type="text"
+        placeholder="snapshot ID (optional)" />
+      <select id="var-select">
+        <option value="">— variable —</option>
+      </select>
+      <button id="load-btn">Load</button>
+      <span id="status"></span>
+    </header>
+
+    <main>
+      <div id="map"></div>
+
+      <aside>
+        <div id="layer-controls">
+          <div class="control-group">
+            <label>Time step</label>
+            <input type="range" id="time-slider" min="0" max="0" step="1" value="0" />
+            <div class="value-display" id="time-label">0</div>
+          </div>
+
+          <div class="control-group">
+            <label>Colormap</label>
+            <select id="colormap-select">
+              <option value="viridis" selected>Viridis</option>
+              <option value="plasma">Plasma</option>
+              <option value="ylgn">YlGn</option>
+              <option value="rdylgn">RdYlGn</option>
+              <option value="greens">Greens</option>
+              <option value="blues">Blues</option>
+              <option value="reds">Reds</option>
+              <option value="coolwarm">CoolWarm</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <label>Color range</label>
+            <div class="clim-row">
+              <input type="number" id="clim-min" value="0" step="0.1" />
+              <input type="number" id="clim-max" value="1" step="0.1" />
+            </div>
+          </div>
+
+          <div class="control-group">
+            <label>Opacity</label>
+            <input type="range" id="opacity-slider" min="0" max="1" step="0.05" value="0.85" />
+            <div class="value-display" id="opacity-label">0.85</div>
+          </div>
+
+          <hr class="divider" />
+        </div>
+
+        <div class="meta" id="meta-panel">
+          <em style="color:#4a5568">Enter a store URL and click Load.</em>
+        </div>
+      </aside>
+    </main>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

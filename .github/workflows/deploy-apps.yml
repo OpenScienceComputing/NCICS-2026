@@ -27,12 +27,20 @@ jobs:
           cache-dependency-path: |
             ndvi-zarr-layer-app/package-lock.json
             eurocrops-viewer/package-lock.json
+            icechunk-explorer/package-lock.json
 
       # Build NDVI Zarr App
       - name: Build NDVI App
         working-directory: ndvi-zarr-layer-app
         env:
           VITE_STAC_URL: https://r2-pub.openscicomp.io/ndvi_cdr_pyramid_stac_item.json
+        run: |
+          npm install
+          npm run build
+
+      # Build Icechunk Explorer
+      - name: Build Icechunk Explorer
+        working-directory: icechunk-explorer
         run: |
           npm install
           npm run build
@@ -53,6 +61,9 @@ jobs:
           # eurocrops app builds to eurocrops-viewer/dist
           mkdir -p final-dist/eurocrops-viewer
           cp -r eurocrops-viewer/dist/* final-dist/eurocrops-viewer/
+          # icechunk explorer builds to icechunk-explorer/dist/icechunk-explorer
+          mkdir -p final-dist/icechunk-explorer
+          cp -r icechunk-explorer/dist/icechunk-explorer/* final-dist/icechunk-explorer/
           # Add a simple landing page
           cat <<EOF > final-dist/index.html
           <!DOCTYPE html>
@@ -63,6 +74,7 @@ jobs:
               <ul>
                 <li><a href="zarr-layer-demo/" style="color: #4caf6e;">NDVI Zarr Layer Demo</a></li>
                 <li><a href="eurocrops-viewer/" style="color: #4caf6e;">EuroCrops FlatGeobuf Viewer</a></li>
+                <li><a href="icechunk-explorer/" style="color: #4caf6e;">Icechunk Explorer</a></li>
               </ul>
             </body>
           </html>
