@@ -165,18 +165,23 @@ async function readZarrMeta(url, store) {
         levelPaths = multiscales.layout.map(l => l.asset).filter(Boolean)
       }
 
-      // Extract variable names from store key listing, excluding coords and metadata files
+      // listDir(prefix) returns direct children — use it if available, else fall back
       const listVars = async (prefix) => {
-        const allKeys = await store.list()
-        const children = new Set()
-        const norm = prefix ? prefix + '/' : ''
-        for (const key of allKeys) {
-          if (norm && !key.startsWith(norm)) continue
-          const name = key.slice(norm.length).split('/')[0]
-          if (name) children.add(name)
+        let children
+        if (typeof store.listDir === 'function') {
+          children = await store.listDir(prefix)
+        } else {
+          // Fallback: list all keys and extract first path component under prefix
+          const norm = prefix ? prefix + '/' : ''
+          const all = await store.list()
+          const set = new Set()
+          for (const key of all) {
+            if (norm && !key.startsWith(norm)) continue
+            set.add(key.slice(norm.length).split('/')[0])
+          }
+          children = [...set]
         }
-        // Filter coords and any zarr metadata filenames (contain '.' like zarr.json)
-        return [...children].filter(n => !COORD_NAMES.has(n) && !n.includes('.'))
+        return children.filter(n => n && !COORD_NAMES.has(n) && !n.includes('.'))
       }
 
       if (levelPaths.length > 0) {
