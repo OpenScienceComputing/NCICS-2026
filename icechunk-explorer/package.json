@@ -10,12 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@carbonplan/zarr-layer": "^0.4.2",
     "@carbonplan/icechunk-js": "^0.2.3",
+    "@carbonplan/zarr-layer": "^0.4.2",
     "@earthmover/icechunk": "alpha",
     "@earthmover/icechunk-wasm32-wasi": "^2.0.0-alpha.14",
     "coi-serviceworker": "^0.1.7",
-    "maplibre-gl": "^4.7.1"
+    "maplibre-gl": "^4.7.1",
+    "zarrita": "^0.6.2"
   },
   "devDependencies": {
     "vite": "^6.0.0",
