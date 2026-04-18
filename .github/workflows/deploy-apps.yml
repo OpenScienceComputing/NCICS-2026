@@ -27,7 +27,6 @@ jobs:
           cache-dependency-path: |
             ndvi-zarr-layer-app/package-lock.json
             eurocrops-viewer/package-lock.json
-            icechunk-explorer/package-lock.json
 
       # Build NDVI Zarr App
       - name: Build NDVI App
@@ -38,13 +37,11 @@ jobs:
           npm install
           npm run build
 
-      # Build Icechunk Explorer
+      # Build Icechunk Explorer (--force needed for wasm32 platform package on x64)
       - name: Build Icechunk Explorer
         working-directory: icechunk-explorer
-        env:
-          npm_config_force: "true"
         run: |
-          npm install
+          npm install --force
           npm run build
 
       # Build EuroCrops App

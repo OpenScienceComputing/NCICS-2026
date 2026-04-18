@@ -41,6 +41,6 @@ export default defineConfig({
 
   optimizeDeps: {
     exclude: ['@earthmover/icechunk'],
-    include: ['maplibre-gl', '@carbonplan/zarr-layer'],
+    include: ['maplibre-gl', '@carbonplan/zarr-layer', '@carbonplan/icechunk-js'],
   },
 })

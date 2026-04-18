@@ -3,6 +3,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { ZarrLayer } from '@carbonplan/zarr-layer'
 import { Repository } from '@earthmover/icechunk'
 import { createFetchStorage } from '@earthmover/icechunk/fetch-storage'
+import { IcechunkStore } from '@carbonplan/icechunk-js'
 
 // ---------------------------------------------------------------------------
 // Colormaps
@@ -98,19 +99,34 @@ let layer = null
 let timeCoords = null  // array of coordinate labels if available
 
 // ---------------------------------------------------------------------------
-// Open store — tries Icechunk first, falls back to plain Zarr URL
+// Open store — tries Icechunk v2, then v1, then falls back to plain Zarr
 // ---------------------------------------------------------------------------
 async function openStore(url, snap) {
+  // Try @earthmover/icechunk (v2)
   try {
     const storage = createFetchStorage(url)
     const repo = await Repository.open(storage)
     const sessionOpts = snap ? { snapshotId: snap } : { branch: 'main' }
     const session = await repo.readonlySession(sessionOpts)
+    console.info('Opened as Icechunk v2')
     return { store: session.store, isIcechunk: true }
-  } catch {
-    // Not an Icechunk store — ZarrLayer accepts a plain URL string
-    return { store: null, isIcechunk: false }
+  } catch (err) {
+    console.warn('Icechunk v2 open failed, trying v1:', err)
   }
+
+  // Fall back to @carbonplan/icechunk-js (v1)
+  try {
+    const opts = snap
+      ? { snapshotId: snap, formatVersion: 'v1', cache: 'no-store' }
+      : { branch: 'main',  formatVersion: 'v1', cache: 'no-store' }
+    const store = await IcechunkStore.open(url, opts)
+    console.info('Opened as Icechunk v1')
+    return { store, isIcechunk: true }
+  } catch (err) {
+    console.warn('Icechunk v1 open failed, treating as plain Zarr:', err)
+  }
+
+  return { store: null, isIcechunk: false }
 }
 
 // ---------------------------------------------------------------------------
