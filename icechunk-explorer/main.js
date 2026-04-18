@@ -36,14 +36,15 @@ function getParams() {
 }
 
 function pushParams(state) {
-  const p = new URLSearchParams()
-  if (state.url)     p.set('url',  state.url)
-  if (state.snap)    p.set('snap', state.snap)
-  if (state.varName) p.set('var',  state.varName)
-  p.set('t',    String(state.t))
-  if (state.clim) p.set('clim', state.clim.join(','))
-  p.set('cm',   state.cm)
-  const newSearch = '?' + p.toString()
+  const parts = []
+  // Keep url unencoded so it stays human-readable in the address bar
+  if (state.url)     parts.push(`url=${state.url}`)
+  if (state.snap)    parts.push(`snap=${encodeURIComponent(state.snap)}`)
+  if (state.varName) parts.push(`var=${encodeURIComponent(state.varName)}`)
+  parts.push(`t=${state.t}`)
+  if (state.clim)    parts.push(`clim=${state.clim.join(',')}`)
+  parts.push(`cm=${encodeURIComponent(state.cm)}`)
+  const newSearch = '?' + parts.join('&')
   if (window.location.search !== newSearch)
     history.replaceState(null, '', newSearch)
 }
