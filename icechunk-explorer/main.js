@@ -109,9 +109,10 @@ async function openStore(url, snap) {
     const sessionOpts = snap ? { snapshotId: snap } : { branch: 'main' }
     const session = await repo.readonlySession(sessionOpts)
     console.info('Opened as Icechunk v2')
-    return { store: session.store, isIcechunk: true }
+    return { store: session.store, isIcechunk: true, storeType: 'Icechunk v2' }
   } catch (err) {
-    console.warn('Icechunk v2 open failed, trying v1:', err)
+    console.warn('Icechunk v2 open failed:', err?.message ?? err)
+    setStatus(`v2 failed: ${err?.message ?? err} — trying v1…`)
   }
 
   // Fall back to @carbonplan/icechunk-js (v1)
@@ -121,12 +122,13 @@ async function openStore(url, snap) {
       : { branch: 'main',  formatVersion: 'v1', cache: 'no-store' }
     const store = await IcechunkStore.open(url, opts)
     console.info('Opened as Icechunk v1')
-    return { store, isIcechunk: true }
+    return { store, isIcechunk: true, storeType: 'Icechunk v1' }
   } catch (err) {
-    console.warn('Icechunk v1 open failed, treating as plain Zarr:', err)
+    console.warn('Icechunk v1 open failed:', err?.message ?? err)
+    setStatus(`v1 failed: ${err?.message ?? err} — trying plain Zarr…`)
   }
 
-  return { store: null, isIcechunk: false }
+  return { store: null, isIcechunk: false, storeType: 'Zarr (HTTP)' }
 }
 
 // ---------------------------------------------------------------------------
