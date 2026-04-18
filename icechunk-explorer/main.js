@@ -186,7 +186,12 @@ async function readZarrMeta(url, store) {
           const arr = await zarr.open(levelGroup.resolve(vars[0]), { kind: 'array' })
           shape = [...arr.shape]
           dtype = String(arr.dtype)
-          dims  = arr.attrs?._ARRAY_DIMENSIONS ?? arr.attrs?.dimension_names ?? null
+          // zarr v3: dimension_names is top-level in zarr.json, exposed via arr.meta
+          // zarr v2 compat: _ARRAY_DIMENSIONS in attributes
+          dims  = arr.meta?.dimension_names
+               ?? arr.attrs?._ARRAY_DIMENSIONS
+               ?? arr.attrs?.dimension_names
+               ?? null
         }
       } else {
         // Flat group: variables are direct children of root
@@ -202,7 +207,10 @@ async function readZarrMeta(url, store) {
           const arr = await zarr.open(root.resolve(vars[0]), { kind: 'array' })
           shape = [...arr.shape]
           dtype = String(arr.dtype)
-          dims  = arr.attrs?._ARRAY_DIMENSIONS ?? arr.attrs?.dimension_names ?? null
+          dims  = arr.meta?.dimension_names
+               ?? arr.attrs?._ARRAY_DIMENSIONS
+               ?? arr.attrs?.dimension_names
+               ?? null
         }
       }
     } catch (err) {
@@ -413,6 +421,7 @@ timeSlider.addEventListener('input', debounce(() => {
   appState.t = Number(timeSlider.value)
   timeLabel.textContent = String(appState.t)
   layer?.setSelector({ time: { selected: appState.t, type: 'index' } })
+  map.triggerRepaint()
   pushParams(appState)
 }, 150))
 
