@@ -246,6 +246,9 @@ async function readZarrMeta(url, store) {
   if (dims && shape) {
     const tIdx = dims.findIndex(d => d === 'time' || d === 't')
     if (tIdx >= 0) timeDimSize = shape[tIdx]
+  } else if (shape && shape.length >= 3) {
+    // Fallback: CF convention puts time first in 3D+ arrays
+    timeDimSize = shape[0]
   }
 
   return { vars, shape, dtype, dims, timeDimSize }
