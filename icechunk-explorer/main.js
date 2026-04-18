@@ -270,6 +270,19 @@ async function readZarrMeta(url, store) {
                ?? arr.attrs?.dimension_names
                ?? null
           gridMappingVarName = arr.attrs?.grid_mapping ?? null
+          console.info('[explorer] arr keys:', Object.keys(arr), 'meta:', arr.meta, 'attrs:', arr.attrs)
+          // Fallback: read zarr.json directly from store
+          if (!dims) {
+            try {
+              const bytes = await store.get(`${firstLevel}/${vars[0]}/zarr.json`)
+              if (bytes) {
+                const meta = JSON.parse(new TextDecoder().decode(bytes))
+                dims = meta.dimension_names ?? meta.attributes?._ARRAY_DIMENSIONS ?? null
+                if (!gridMappingVarName) gridMappingVarName = meta.attributes?.grid_mapping ?? null
+                console.info('[explorer] zarr.json direct read:', meta)
+              }
+            } catch {}
+          }
         }
       } else {
         vars = await listVars('')
@@ -283,6 +296,19 @@ async function readZarrMeta(url, store) {
                ?? arr.attrs?.dimension_names
                ?? null
           gridMappingVarName = arr.attrs?.grid_mapping ?? null
+          console.info('[explorer] arr keys:', Object.keys(arr), 'meta:', arr.meta, 'attrs:', arr.attrs)
+          // Fallback: read zarr.json directly from store
+          if (!dims) {
+            try {
+              const bytes = await store.get(`${vars[0]}/zarr.json`)
+              if (bytes) {
+                const meta = JSON.parse(new TextDecoder().decode(bytes))
+                dims = meta.dimension_names ?? meta.attributes?._ARRAY_DIMENSIONS ?? null
+                if (!gridMappingVarName) gridMappingVarName = meta.attributes?.grid_mapping ?? null
+                console.info('[explorer] zarr.json direct read:', meta)
+              }
+            } catch {}
+          }
         }
       }
 
