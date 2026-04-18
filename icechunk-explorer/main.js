@@ -1,6 +1,7 @@
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { ZarrLayer } from '@carbonplan/zarr-layer'
+import * as zarr from 'zarrita'
 import { Repository } from '@earthmover/icechunk'
 import { createFetchStorage } from '@earthmover/icechunk/fetch-storage'
 import { IcechunkStore } from '@carbonplan/icechunk-js'
@@ -133,52 +134,13 @@ async function openStore(url, snap) {
 
 // ---------------------------------------------------------------------------
 // Read zarr metadata to discover variables and dimension sizes
+// Uses zarrita the same way zarr-layer does internally.
 // ---------------------------------------------------------------------------
 
-// Coordinate/auxiliary names to exclude from variable list
 const COORD_NAMES = new Set([
   'latitude', 'longitude', 'lat', 'lon', 'x', 'y',
   'time', 'spatial_ref', 'crs', 'proj', 'level',
 ])
-
-// Decode a key from the store object (Icechunk or zarrita-compatible)
-async function storeGet(store, key) {
-  try {
-    const bytes = await store.get(key)
-    console.debug(`storeGet(${key}):`, bytes, typeof bytes)
-    if (!bytes) return null
-    // bytes may be Uint8Array, Buffer, or ArrayBuffer
-    const buf = bytes instanceof Uint8Array ? bytes
-               : bytes.buffer ? new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-               : new Uint8Array(bytes)
-    return JSON.parse(new TextDecoder().decode(buf))
-  } catch (err) {
-    console.warn(`storeGet(${key}) failed:`, err)
-    return null
-  }
-}
-
-// List immediate child array/group names under a prefix via store.list()
-async function storeListChildren(store, prefix) {
-  const normPrefix = prefix.endsWith('/') ? prefix : prefix + '/'
-  const names = new Set()
-  try {
-    // list() may return AsyncIterator or Promise<string[]> — handle both
-    const result = store.list(normPrefix)
-    const keys = (result && typeof result[Symbol.asyncIterator] === 'function')
-      ? result : await result
-    for await (const key of keys) {
-      if (!key.startsWith(normPrefix)) continue  // list() may ignore prefix arg
-      const rel = key.slice(normPrefix.length)
-      const firstPart = rel.split('/')[0]
-      if (firstPart) names.add(firstPart)
-    }
-    console.debug(`storeListChildren(${normPrefix}):`, [...names])
-  } catch (err) {
-    console.warn(`storeListChildren(${normPrefix}) failed:`, err)
-  }
-  return [...names]
-}
 
 async function readZarrMeta(url, store) {
   let vars = []
@@ -187,16 +149,14 @@ async function readZarrMeta(url, store) {
   let dtype = null
   let dims = null
 
-  // ── Path 1: read through the store object (works for Icechunk) ──────
+  // ── Path 1: use zarrita (same pattern as zarr-layer) ────────────────
   if (store) {
-    const rootMeta = await storeGet(store, 'zarr.json')
-    if (rootMeta) {
-      const attrs = rootMeta.attributes || {}
+    try {
+      const root = await zarr.open(zarr.root(store), { kind: 'group' })
+      const attrs = root.attrs || {}
       const multiscales = attrs.multiscales
 
-      // Handle two multiscales formats:
-      //   OME-NGFF array:  multiscales = [{datasets: [{path: '0'}]}]
-      //   topozarr object: multiscales = {layout: [{asset: '0'}]}
+      // Parse level paths — handle OME-NGFF array and topozarr object formats
       let levelPaths = []
       if (Array.isArray(multiscales) && multiscales.length > 0) {
         levelPaths = (multiscales[0].datasets || []).map(d => d.path).filter(Boolean)
@@ -205,49 +165,58 @@ async function readZarrMeta(url, store) {
       }
 
       if (levelPaths.length > 0) {
-        // GeoZarr / topozarr DataTree: variables live inside level groups
+        // Multiscale DataTree: variables are arrays inside each level group
         const firstLevel = levelPaths[0]
+        const levelGroup = await zarr.open(root.resolve(firstLevel), { kind: 'group' })
+
+        // list() all keys and extract immediate children of the level group
         const prefix = firstLevel + '/'
-        const children = await storeListChildren(store, prefix)
-        vars = children.filter(n => !COORD_NAMES.has(n))
-        console.info('vars from multiscales level:', firstLevel, vars)
-
-        // Get shape/dtype/dims from first data variable at first level
-        if (vars.length > 0) {
-          const arrMeta = await storeGet(store, `${firstLevel}/${vars[0]}/zarr.json`)
-          if (arrMeta) {
-            shape = arrMeta.shape
-            dtype = arrMeta.data_type ?? arrMeta.dtype
-            dims  = arrMeta.dimension_names ?? arrMeta.attributes?._ARRAY_DIMENSIONS
-          }
+        const allKeys = await store.list()
+        const children = new Set()
+        for (const key of allKeys) {
+          if (!key.startsWith(prefix)) continue
+          const name = key.slice(prefix.length).split('/')[0]
+          if (name) children.add(name)
         }
-      } else if (rootMeta.node_type === 'group') {
+        vars = [...children].filter(n => !COORD_NAMES.has(n))
+        console.info('vars discovered:', vars)
+
+        // Get shape/dtype/dims via zarrita
+        if (vars.length > 0) {
+          const arr = await zarr.open(levelGroup.resolve(vars[0]), { kind: 'array' })
+          shape = [...arr.shape]
+          dtype = String(arr.dtype)
+          dims  = arr.attrs?._ARRAY_DIMENSIONS ?? arr.attrs?.dimension_names ?? null
+        }
+      } else {
         // Flat group: variables are direct children of root
-        const children = await storeListChildren(store, '')
-        vars = children.filter(n => !COORD_NAMES.has(n))
+        const allKeys = await store.list()
+        const children = new Set()
+        for (const key of allKeys) {
+          const name = key.split('/')[0]
+          if (name && !name.startsWith('zarr') && !name.startsWith('.')) children.add(name)
+        }
+        vars = [...children].filter(n => !COORD_NAMES.has(n))
 
         if (vars.length > 0) {
-          const arrMeta = await storeGet(store, `${vars[0]}/zarr.json`)
-          if (arrMeta) {
-            shape = arrMeta.shape
-            dtype = arrMeta.data_type ?? arrMeta.dtype
-            dims  = arrMeta.dimension_names ?? arrMeta.attributes?._ARRAY_DIMENSIONS
-          }
+          const arr = await zarr.open(root.resolve(vars[0]), { kind: 'array' })
+          shape = [...arr.shape]
+          dtype = String(arr.dtype)
+          dims  = arr.attrs?._ARRAY_DIMENSIONS ?? arr.attrs?.dimension_names ?? null
         }
       }
+    } catch (err) {
+      console.warn('zarrita metadata read failed:', err)
     }
   }
 
-  // ── Path 2: HTTP fetches for plain Zarr over HTTP ────────────────────
+  // ── Path 2: HTTP fallback for plain Zarr over HTTP ───────────────────
   const tryFetch = async (path) => {
-    try {
-      const r = await fetch(path)
-      return r.ok ? r.json() : null
-    } catch { return null }
+    try { const r = await fetch(path); return r.ok ? r.json() : null }
+    catch { return null }
   }
 
   if (vars.length === 0) {
-    // Zarr v2 consolidated metadata
     const czm = await tryFetch(`${url}/.zmetadata`)
     if (czm?.metadata) {
       vars = Object.keys(czm.metadata)
@@ -258,23 +227,16 @@ async function readZarrMeta(url, store) {
   }
 
   if (vars.length === 0) {
-    // Zarr v3 root zarr.json via HTTP (works for plain HTTP Zarr stores)
     const v3root = await tryFetch(`${url}/zarr.json`)
     if (v3root?.zarr_format === 3) {
-      const multiscales = v3root.attributes?.multiscales
-      if (multiscales?.length > 0) {
-        const firstLevel = multiscales[0]?.datasets?.[0]?.path ?? '0'
-        // Try reading consolidated metadata embedded in root (zarr-python style)
-        const nodes = v3root.consolidated_metadata?.metadata ?? {}
-        vars = Object.keys(nodes)
-          .filter(k => k.startsWith(firstLevel + '/') && nodes[k].node_type === 'array')
-          .map(k => k.slice(firstLevel.length + 1).split('/')[0])
-          .filter(n => n && !COORD_NAMES.has(n))
-      }
+      const nodes = v3root.consolidated_metadata?.metadata ?? {}
+      vars = Object.keys(nodes)
+        .filter(k => nodes[k].node_type === 'array' && !k.includes('/'))
+        .filter(n => !COORD_NAMES.has(n))
     }
   }
 
-  // ── Resolve time dimension size from shape/dims ──────────────────────
+  // ── Resolve time dimension size ──────────────────────────────────────
   if (dims && shape) {
     const tIdx = dims.findIndex(d => d === 'time' || d === 't')
     if (tIdx >= 0) timeDimSize = shape[tIdx]
