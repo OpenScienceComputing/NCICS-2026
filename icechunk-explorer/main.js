@@ -111,7 +111,42 @@ async function openStore(url, snap) {
     const sessionOpts = snap ? { snapshotId: snap } : { branch: 'main' }
     const session = await repo.readonlySession(sessionOpts)
     console.info(`Opened as Icechunk v${specVersion}`)
-    return { store: session.store, isIcechunk: true, storeType: `Icechunk v${specVersion}` }
+
+    // Diagnose key format: test with and without leading slash
+    const rawStore = session.store
+    const testKeys = ['/zarr.json', 'zarr.json']
+    for (const k of testKeys) {
+      try {
+        const bytes = await rawStore.get(k)
+        console.info(`[diag] store.get('${k}') → ${bytes ? bytes.byteLength + ' bytes' : 'null'}`)
+      } catch (e) {
+        console.warn(`[diag] store.get('${k}') threw:`, e?.message)
+      }
+    }
+
+    // Wrap to normalize keys: zarrita passes leading-slash paths, earthmover WASM may expect none
+    const store = new Proxy(rawStore, {
+      get(target, prop) {
+        if (prop === 'get') {
+          return (key, ...rest) => {
+            // strip leading slash if present
+            const normalized = key.startsWith('/') ? key.slice(1) : key
+            if (normalized !== key) console.debug(`[store] get '${key}' → '${normalized}'`)
+            return target.get(normalized, ...rest)
+          }
+        }
+        if (prop === 'getRange') {
+          return (key, ...rest) => {
+            const normalized = key.startsWith('/') ? key.slice(1) : key
+            return target.getRange(normalized, ...rest)
+          }
+        }
+        const val = target[prop]
+        return typeof val === 'function' ? val.bind(target) : val
+      }
+    })
+
+    return { store, isIcechunk: true, storeType: `Icechunk v${specVersion}` }
   } catch (err) {
     console.warn('Icechunk open failed:', err?.message ?? err)
     setStatus(`Icechunk failed: ${err?.message ?? err} — trying plain Zarr…`)
