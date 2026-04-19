@@ -3,6 +3,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { ZarrLayer } from '@carbonplan/zarr-layer'
 import * as zarr from 'zarrita'
 import { Repository } from '@earthmover/icechunk'
+import proj4 from 'proj4'
 import { createFetchStorage } from '@earthmover/icechunk/fetch-storage'
 
 // ---------------------------------------------------------------------------
@@ -372,8 +373,18 @@ async function readZarrMeta(url, store) {
           }
         } catch {}
       }
-      // For geographic data, validate bounds are in degrees; for projected, keep CRS units
-      if (!proj4String && (bounds[1] < -90 || bounds[3] > 90 || bounds[0] < -360 || bounds[2] > 360)) {
+      // For projected data, convert bounds corners to geographic (lon/lat) for MapLibre
+      if (proj4String) {
+        try {
+          const toWGS84 = proj4(proj4String, 'EPSG:4326')
+          const sw = toWGS84.forward([bounds[0], bounds[1]])
+          const ne = toWGS84.forward([bounds[2], bounds[3]])
+          bounds = [sw[0], sw[1], ne[0], ne[1]]
+          console.info('[explorer] reprojected bounds (lon/lat):', bounds)
+        } catch (e) {
+          console.warn('[explorer] bounds reprojection failed:', e)
+        }
+      } else if (bounds[1] < -90 || bounds[3] > 90 || bounds[0] < -360 || bounds[2] > 360) {
         bounds = [-180, -90, 180, 90]
       }
 
