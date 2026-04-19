@@ -204,6 +204,36 @@ function cfToProjString(a) {
   return null
 }
 
+// Try to find a grid_mapping variable when the data variable lacks a 'grid_mapping' attr.
+// Checks variables listed in the 'coordinates' attr first, then probes common CRS names.
+async function detectGridMappingVar(rootLoc, coordPrefix, arrAttrs, store) {
+  // 1. Parse 'coordinates' attribute (e.g. "latitude longitude spatial_ref")
+  if (arrAttrs?.coordinates) {
+    const coordVarNames = String(arrAttrs.coordinates).trim().split(/\s+/)
+    for (const cv of coordVarNames) {
+      if (COORD_NAMES.has(cv)) continue
+      try {
+        const cvArr = await zarr.open(rootLoc.resolve(coordPrefix + cv), { kind: 'array' })
+        if (cvArr.attrs?.grid_mapping_name) {
+          console.info('[explorer] found grid_mapping via coordinates attr:', cv)
+          return cv
+        }
+      } catch {}
+    }
+  }
+  // 2. Probe common CRS variable names
+  for (const candidate of ['spatial_ref', 'crs', 'lambert_conformal_conic', 'grid_mapping', 'projection']) {
+    try {
+      const cvArr = await zarr.open(rootLoc.resolve(coordPrefix + candidate), { kind: 'array' })
+      if (cvArr.attrs?.grid_mapping_name) {
+        console.info('[explorer] found grid_mapping by name probe:', candidate)
+        return candidate
+      }
+    } catch {}
+  }
+  return null
+}
+
 async function readZarrMeta(url, store) {
   let vars = []
   let timeDimSize = 1
@@ -283,6 +313,10 @@ async function readZarrMeta(url, store) {
               }
             } catch {}
           }
+          // If still no grid_mapping, probe 'coordinates' attr and common CRS var names
+          if (!gridMappingVarName) {
+            gridMappingVarName = await detectGridMappingVar(rootLoc, coordPrefix, arr.attrs, store)
+          }
         }
       } else {
         vars = await listVars('')
@@ -308,6 +342,10 @@ async function readZarrMeta(url, store) {
                 console.info('[explorer] zarr.json direct read:', meta)
               }
             } catch {}
+          }
+          // If still no grid_mapping, probe 'coordinates' attr and common CRS var names
+          if (!gridMappingVarName) {
+            gridMappingVarName = await detectGridMappingVar(rootLoc, coordPrefix, arr.attrs, store)
           }
         }
       }
