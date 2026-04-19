@@ -3,7 +3,6 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { ZarrLayer } from '@carbonplan/zarr-layer'
 import * as zarr from 'zarrita'
 import { Repository } from '@earthmover/icechunk'
-import proj4 from 'proj4'
 import { createFetchStorage } from '@earthmover/icechunk/fetch-storage'
 
 // ---------------------------------------------------------------------------
@@ -373,18 +372,9 @@ async function readZarrMeta(url, store) {
           }
         } catch {}
       }
-      // For projected data, convert bounds corners to geographic (lon/lat) for MapLibre
-      if (proj4String) {
-        try {
-          const toWGS84 = proj4(proj4String, 'EPSG:4326')
-          const sw = toWGS84.forward([bounds[0], bounds[1]])
-          const ne = toWGS84.forward([bounds[2], bounds[3]])
-          bounds = [sw[0], sw[1], ne[0], ne[1]]
-          console.info('[explorer] reprojected bounds (lon/lat):', bounds)
-        } catch (e) {
-          console.warn('[explorer] bounds reprojection failed:', e)
-        }
-      } else if (bounds[1] < -90 || bounds[3] > 90 || bounds[0] < -360 || bounds[2] > 360) {
+      // For geographic data, validate bounds are in degrees; for projected, keep native CRS units
+      // ZarrLayer uses proj4 + projected bounds to compute Mercator placement internally
+      if (!proj4String && (bounds[1] < -90 || bounds[3] > 90 || bounds[0] < -360 || bounds[2] > 360)) {
         bounds = [-180, -90, 180, 90]
       }
 
@@ -478,6 +468,10 @@ async function renderLayer(url, store, varName, state) {
   const proj4String   = currentMeta.proj4String || null
   console.info(`[explorer] lat=${latDim} lon=${lonDim} bounds=${bounds} latAsc=${latIsAscending} proj4=${proj4String}`)
 
+  // When proj4 is present, omit explicit bounds so ZarrLayer reads the projected
+  // coordinate arrays itself and computes correct Mercator bounds via its own proj4 path.
+  // Passing projected-meter bounds as 'bounds' causes ZarrLayer to misinterpret them as
+  // degrees (crs defaults to EPSG:4326), breaking tile intersection.
   layer = new ZarrLayer({
     id: 'explorer',
     source: url,
@@ -490,8 +484,7 @@ async function renderLayer(url, store, varName, state) {
     selector: { time: { selected: state.t, type: 'index' } },
     spatialDimensions: { lat: latDim, lon: lonDim },
     latIsAscending,
-    bounds,
-    ...(proj4String ? { proj4: proj4String } : {}),
+    ...(proj4String ? { proj4: proj4String } : { bounds }),
   })
 
   map.addLayer(layer)
