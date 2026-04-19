@@ -468,10 +468,6 @@ async function renderLayer(url, store, varName, state) {
   const proj4String   = currentMeta.proj4String || null
   console.info(`[explorer] lat=${latDim} lon=${lonDim} bounds=${bounds} latAsc=${latIsAscending} proj4=${proj4String}`)
 
-  // When proj4 is present, omit explicit bounds so ZarrLayer reads the projected
-  // coordinate arrays itself and computes correct Mercator bounds via its own proj4 path.
-  // Passing projected-meter bounds as 'bounds' causes ZarrLayer to misinterpret them as
-  // degrees (crs defaults to EPSG:4326), breaking tile intersection.
   layer = new ZarrLayer({
     id: 'explorer',
     source: url,
@@ -484,7 +480,8 @@ async function renderLayer(url, store, varName, state) {
     selector: { time: { selected: state.t, type: 'index' } },
     spatialDimensions: { lat: latDim, lon: lonDim },
     latIsAscending,
-    ...(proj4String ? { proj4: proj4String } : { bounds }),
+    bounds,
+    ...(proj4String ? { proj4: proj4String } : {}),
   })
 
   map.addLayer(layer)
