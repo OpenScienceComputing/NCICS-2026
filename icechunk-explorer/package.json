@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@carbonplan/icechunk-js": "^0.2.3",
     "@carbonplan/zarr-layer": "^0.4.2",
     "@earthmover/icechunk": "alpha",
     "@earthmover/icechunk-wasm32-wasi": "^2.0.0-alpha.14",

@@ -4,7 +4,6 @@ import { ZarrLayer } from '@carbonplan/zarr-layer'
 import * as zarr from 'zarrita'
 import { Repository } from '@earthmover/icechunk'
 import { createFetchStorage } from '@earthmover/icechunk/fetch-storage'
-import { IcechunkStore } from '@carbonplan/icechunk-js'
 
 // ---------------------------------------------------------------------------
 // Colormaps
@@ -101,33 +100,20 @@ let layer = null
 let timeCoords = null  // array of coordinate labels if available
 
 // ---------------------------------------------------------------------------
-// Open store — tries Icechunk v2, then v1, then falls back to plain Zarr
+// Open store — uses @earthmover/icechunk which auto-detects v1 and v2
 // ---------------------------------------------------------------------------
 async function openStore(url, snap) {
-  // Try @earthmover/icechunk (v2)
   try {
     const storage = createFetchStorage(url)
     const repo = await Repository.open(storage)
+    const specVersion = repo.specVersion
     const sessionOpts = snap ? { snapshotId: snap } : { branch: 'main' }
     const session = await repo.readonlySession(sessionOpts)
-    console.info('Opened as Icechunk v2')
-    return { store: session.store, isIcechunk: true, storeType: 'Icechunk v2' }
+    console.info(`Opened as Icechunk v${specVersion}`)
+    return { store: session.store, isIcechunk: true, storeType: `Icechunk v${specVersion}` }
   } catch (err) {
-    console.warn('Icechunk v2 open failed:', err?.message ?? err)
-    setStatus(`v2 failed: ${err?.message ?? err} — trying v1…`)
-  }
-
-  // Fall back to @carbonplan/icechunk-js (v1)
-  try {
-    const opts = snap
-      ? { snapshotId: snap, formatVersion: 'v1', cache: 'no-store' }
-      : { branch: 'main',  formatVersion: 'v1', cache: 'no-store' }
-    const store = await IcechunkStore.open(url, opts)
-    console.info('Opened as Icechunk v1')
-    return { store, isIcechunk: true, storeType: 'Icechunk v1' }
-  } catch (err) {
-    console.warn('Icechunk v1 open failed:', err?.message ?? err)
-    setStatus(`v1 failed: ${err?.message ?? err} — trying plain Zarr…`)
+    console.warn('Icechunk open failed:', err?.message ?? err)
+    setStatus(`Icechunk failed: ${err?.message ?? err} — trying plain Zarr…`)
   }
 
   return { store: null, isIcechunk: false, storeType: 'Zarr (HTTP)' }
