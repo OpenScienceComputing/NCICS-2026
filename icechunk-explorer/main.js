@@ -483,11 +483,20 @@ async function renderLayer(url, store, varName, state) {
     latIsAscending,
     bounds,
     ...(proj4String ? { proj4: proj4String } : {}),
+    onLoadingStateChange: ({ loading, chunks, error }) => {
+      if (error) {
+        setStatus(`ZarrLayer error: ${error.message}`, 'error')
+        console.error('[explorer] ZarrLayer init error:', error)
+      } else if (!loading) {
+        setStatus('ready', 'ready')
+      } else if (chunks) {
+        setStatus('loading chunks…')
+      }
+    },
   })
 
   map.addLayer(layer)
   setStatus('rendering…')
-  map.once('idle', () => setStatus('ready', 'ready'))
 }
 
 // ---------------------------------------------------------------------------
@@ -531,7 +540,7 @@ async function loadStore(url, snap) {
         const ne = toWGS84.forward([meta.bounds[2], meta.bounds[3]])
         geoBounds = [sw[0], sw[1], ne[0], ne[1]]
       }
-      map.fitBounds(geoBounds, { padding: 20, duration: 800 })
+      map.fitBounds(geoBounds, { padding: 20, duration: 0 })
     } catch {}
 
     // Update time slider range
