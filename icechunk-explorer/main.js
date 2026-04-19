@@ -112,34 +112,15 @@ async function openStore(url, snap) {
     const session = await repo.readonlySession(sessionOpts)
     console.info(`Opened as Icechunk v${specVersion}`)
 
-    // Diagnose key format: test with and without leading slash
+    // Zarrita passes keys with leading slashes; normalize for earthmover WASM store
     const rawStore = session.store
-    const testKeys = ['/zarr.json', 'zarr.json']
-    for (const k of testKeys) {
-      try {
-        const bytes = await rawStore.get(k)
-        console.info(`[diag] store.get('${k}') → ${bytes ? bytes.byteLength + ' bytes' : 'null'}`)
-      } catch (e) {
-        console.warn(`[diag] store.get('${k}') threw:`, e?.message)
-      }
-    }
-
-    // Wrap to normalize keys: zarrita passes leading-slash paths, earthmover WASM may expect none
     const store = new Proxy(rawStore, {
       get(target, prop) {
         if (prop === 'get') {
-          return (key, ...rest) => {
-            // strip leading slash if present
-            const normalized = key.startsWith('/') ? key.slice(1) : key
-            if (normalized !== key) console.debug(`[store] get '${key}' → '${normalized}'`)
-            return target.get(normalized, ...rest)
-          }
+          return (key, ...rest) => target.get(key.startsWith('/') ? key.slice(1) : key, ...rest)
         }
         if (prop === 'getRange') {
-          return (key, ...rest) => {
-            const normalized = key.startsWith('/') ? key.slice(1) : key
-            return target.getRange(normalized, ...rest)
-          }
+          return (key, ...rest) => target.getRange(key.startsWith('/') ? key.slice(1) : key, ...rest)
         }
         const val = target[prop]
         return typeof val === 'function' ? val.bind(target) : val
