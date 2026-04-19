@@ -4,6 +4,7 @@ import { ZarrLayer } from '@carbonplan/zarr-layer'
 import * as zarr from 'zarrita'
 import { Repository } from '@earthmover/icechunk'
 import { createFetchStorage } from '@earthmover/icechunk/fetch-storage'
+import proj4 from 'proj4'
 
 // ---------------------------------------------------------------------------
 // Colormaps
@@ -520,6 +521,18 @@ async function loadStore(url, snap) {
     }
 
     populateVarSelect(meta.vars, appState.varName)
+
+    // Zoom map to data extent (convert projected bounds to geographic if needed)
+    try {
+      let geoBounds = meta.bounds
+      if (meta.proj4String) {
+        const toWGS84 = proj4(meta.proj4String, 'EPSG:4326')
+        const sw = toWGS84.forward([meta.bounds[0], meta.bounds[1]])
+        const ne = toWGS84.forward([meta.bounds[2], meta.bounds[3]])
+        geoBounds = [sw[0], sw[1], ne[0], ne[1]]
+      }
+      map.fitBounds(geoBounds, { padding: 20, duration: 800 })
+    } catch {}
 
     // Update time slider range
     timeSlider.max = String(Math.max(0, meta.timeDimSize - 1))
