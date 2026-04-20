@@ -137,6 +137,65 @@ async function openStore(url, snap) {
 }
 
 // ---------------------------------------------------------------------------
+// Time coordinate helpers
+// ---------------------------------------------------------------------------
+
+function parseCFTime(values, units) {
+  const m = units?.match(/^(\w+)\s+since\s+(.+)/)
+  if (!m) return null
+  const [, unit, epochStr] = m
+  const epoch = new Date(epochStr.trim().replace(' ', 'T')).getTime()
+  if (isNaN(epoch)) return null
+  let msPerUnit
+  switch (unit.toLowerCase()) {
+    case 'days':    msPerUnit = 86400000; break
+    case 'hours':   msPerUnit = 3600000;  break
+    case 'minutes': msPerUnit = 60000;    break
+    case 'seconds': msPerUnit = 1000;     break
+    case 'milliseconds': msPerUnit = 1;   break
+    default: return null
+  }
+  return Array.from(values).map(v => {
+    const d = new Date(epoch + Number(v) * msPerUnit)
+    return d.toISOString().slice(0, 16).replace('T', ' ') + 'Z'
+  })
+}
+
+function formatTimedelta(value, units) {
+  const v = Number(value)
+  const u = (units ?? '').toLowerCase()
+  if (u.includes('nanosecond')) {
+    const h = v / 3_600_000_000_000
+    return `T+${Number.isInteger(h) ? h : h.toFixed(1)}h`
+  }
+  if (u.includes('microsecond')) return `T+${(v / 3_600_000_000).toFixed(1)}h`
+  if (u.includes('millisecond')) return `T+${(v / 3_600_000).toFixed(1)}h`
+  if (u.includes('second'))  return `T+${(v / 3600).toFixed(1)}h`
+  if (u.includes('minute'))  return `T+${(v / 60).toFixed(1)}h`
+  if (u.includes('hour'))    return `T+${v}h`
+  if (u.includes('day'))     return `T+${v}d`
+  return `step ${v}`
+}
+
+async function readTimeCoords(rootLoc, coordPrefix) {
+  for (const name of ['time', 'step']) {
+    try {
+      const arr = await zarr.open(rootLoc.resolve(coordPrefix + name), { kind: 'array' })
+      if (arr.shape.length !== 1 || arr.shape[0] > 100000) continue
+      const { data } = await zarr.get(arr, null)
+      const units = arr.attrs?.units ?? ''
+      if (name === 'time') {
+        const labels = parseCFTime(data, units)
+        if (labels) return labels
+      }
+      // step or time without recognizable CF units → format as timedelta
+      return Array.from(data).map(v => formatTimedelta(v, units))
+    } catch {}
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------------
 // Read zarr metadata to discover variables and dimension sizes
 // Uses zarrita the same way zarr-layer does internally.
 // ---------------------------------------------------------------------------
@@ -240,6 +299,7 @@ async function detectGridMappingVar(rootLoc, coordPrefix, arrAttrs, store) {
 async function readZarrMeta(url, store) {
   let vars = []
   let timeDimSize = 1
+  let timeLabels = null
   let shape = null
   let dtype = null
   let dims = null
@@ -395,6 +455,9 @@ async function readZarrMeta(url, store) {
         bounds = [-180, -90, 180, 90]
       }
 
+      // ── Read time/step coordinate labels ────────────────────────────
+      timeLabels = await readTimeCoords(rootLoc, coordPrefix)
+
     } catch (err) {
       console.warn('zarrita metadata read failed:', err)
     }
@@ -435,7 +498,7 @@ async function readZarrMeta(url, store) {
     timeDimSize = shape[0]
   }
 
-  return { vars, shape, dtype, dims, timeDimSize, latDim, lonDim, bounds, latIsAscending, proj4String }
+  return { vars, shape, dtype, dims, timeDimSize, timeLabels, latDim, lonDim, bounds, latIsAscending, proj4String }
 }
 
 // ---------------------------------------------------------------------------
@@ -563,7 +626,7 @@ async function loadStore(url, snap) {
     timeSlider.max = String(Math.max(0, meta.timeDimSize - 1))
     if (appState.t >= meta.timeDimSize) appState.t = 0
     timeSlider.value = String(appState.t)
-    timeLabel.textContent = String(appState.t)
+    timeLabel.textContent = meta.timeLabels?.[appState.t] ?? String(appState.t)
 
     // If var already selected (from URL param or prior state), render immediately
     const varToLoad = appState.varName && meta.vars.includes(appState.varName)
@@ -635,7 +698,7 @@ varSelect.addEventListener('change', () => {
 
 timeSlider.addEventListener('input', debounce(() => {
   appState.t = Number(timeSlider.value)
-  timeLabel.textContent = String(appState.t)
+  timeLabel.textContent = currentMeta.timeLabels?.[appState.t] ?? String(appState.t)
   layer?.setSelector({ time: { selected: appState.t, type: 'index' } })
   map.triggerRepaint()
   pushParams(appState)
