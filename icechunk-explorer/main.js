@@ -30,6 +30,7 @@ function getParams() {
     snap: p.get('snap') || '',
     varName: p.get('var') || '',
     t:    parseInt(p.get('t') || '0', 10),
+    s:    parseInt(p.get('s') || '0', 10),
     clim: p.get('clim') ? p.get('clim').split(',').map(Number) : [0, 1],
     cm:   p.get('cm')   || 'viridis',
   }
@@ -37,11 +38,11 @@ function getParams() {
 
 function pushParams(state) {
   const parts = []
-  // Keep url unencoded so it stays human-readable in the address bar
   if (state.url)     parts.push(`url=${state.url}`)
   if (state.snap)    parts.push(`snap=${encodeURIComponent(state.snap)}`)
   if (state.varName) parts.push(`var=${encodeURIComponent(state.varName)}`)
   parts.push(`t=${state.t}`)
+  if (state.s)       parts.push(`s=${state.s}`)
   if (state.clim)    parts.push(`clim=${state.clim.join(',')}`)
   parts.push(`cm=${encodeURIComponent(state.cm)}`)
   const newSearch = '?' + parts.join('&')
@@ -59,6 +60,9 @@ const loadBtn       = document.getElementById('load-btn')
 const statusEl      = document.getElementById('status')
 const timeSlider    = document.getElementById('time-slider')
 const timeLabel     = document.getElementById('time-label')
+const stepControl   = document.getElementById('step-control')
+const stepSlider    = document.getElementById('step-slider')
+const stepLabel     = document.getElementById('step-label')
 const colormapSel   = document.getElementById('colormap-select')
 const climMin       = document.getElementById('clim-min')
 const climMax       = document.getElementById('clim-max')
@@ -94,6 +98,7 @@ let appState = {
   snap: '',
   varName: '',
   t: 0,
+  s: 0,
   clim: [0, 1],
   cm: 'viridis',
 }
@@ -177,21 +182,48 @@ function formatTimedelta(value, units) {
   return `step ${v}`
 }
 
-async function readTimeCoords(rootLoc, coordPrefix) {
-  for (const name of ['time', 'step']) {
-    try {
-      const arr = await zarr.open(rootLoc.resolve(coordPrefix + name), { kind: 'array' })
-      if (arr.shape.length !== 1 || arr.shape[0] > 100000) continue
-      const { data } = await zarr.get(arr, null)
-      const units = arr.attrs?.units ?? ''
-      if (name === 'time') {
-        const labels = parseCFTime(data, units)
-        if (labels) return labels
-      }
-      // step or time without recognizable CF units → format as timedelta
-      return Array.from(data).map(v => formatTimedelta(v, units))
-    } catch {}
+// Compute valid time label: if both time and step labels exist, add step offset to time datetime
+function validTimeLabel(t, s, meta) {
+  const tLabel = meta.timeLabels?.[t]
+  const sLabel = meta.stepLabels?.[s]
+  if (tLabel && sLabel) {
+    // Parse tLabel back to ms and add step offset
+    const tMs = Date.parse(tLabel)
+    const sMs = stepLabelToMs(sLabel)
+    if (!isNaN(tMs) && sMs !== null) {
+      const d = new Date(tMs + sMs)
+      return d.toISOString().slice(0, 16).replace('T', ' ') + 'Z'
+    }
+    return `${tLabel} ${sLabel}`
   }
+  return tLabel ?? sLabel ?? String(t)
+}
+
+function stepLabelToMs(label) {
+  const m = label.match(/^T\+([0-9.]+)([hdms])$/)
+  if (!m) return null
+  const v = parseFloat(m[1])
+  switch (m[2]) {
+    case 'h': return v * 3600000
+    case 'd': return v * 86400000
+    case 'm': return v * 60000
+    case 's': return v * 1000
+    default:  return null
+  }
+}
+
+async function readCoordLabels(rootLoc, coordPrefix, name) {
+  try {
+    const arr = await zarr.open(rootLoc.resolve(coordPrefix + name), { kind: 'array' })
+    if (arr.shape.length !== 1 || arr.shape[0] > 100000) return null
+    const { data } = await zarr.get(arr, null)
+    const units = arr.attrs?.units ?? ''
+    if (name === 'time') {
+      const labels = parseCFTime(data, units)
+      if (labels) return labels
+    }
+    return Array.from(data).map(v => formatTimedelta(v, units))
+  } catch {}
   return null
 }
 
@@ -299,7 +331,11 @@ async function detectGridMappingVar(rootLoc, coordPrefix, arrAttrs, store) {
 async function readZarrMeta(url, store) {
   let vars = []
   let timeDimSize = 1
+  let stepDimSize = 1
+  let timeDimName = 'time'
+  let stepDimName = 'step'
   let timeLabels = null
+  let stepLabels = null
   let shape = null
   let dtype = null
   let dims = null
@@ -455,8 +491,29 @@ async function readZarrMeta(url, store) {
         bounds = [-180, -90, 180, 90]
       }
 
-      // ── Read time/step coordinate labels ────────────────────────────
-      timeLabels = await readTimeCoords(rootLoc, coordPrefix)
+      // ── Read time/step coordinate labels by CF units ─────────────────
+      // datetime coord: units contain "since" (e.g. "hours since 1970-01-01")
+      // timedelta coord: has time-like units without "since" (e.g. "hours", "nanoseconds")
+      const TIMEDELTA_UNITS = /^(nanoseconds?|microseconds?|milliseconds?|seconds?|minutes?|hours?|days?)$/i
+      if (dims) {
+        for (const dim of dims) {
+          if (['latitude','longitude','lat','lon','x','y'].includes(dim)) continue
+          try {
+            const cArr = await zarr.open(rootLoc.resolve(coordPrefix + dim), { kind: 'array' })
+            if (cArr.shape.length !== 1 || cArr.shape[0] > 100000) continue
+            const units = cArr.attrs?.units ?? ''
+            if (!timeLabels && /\bsince\b/i.test(units)) {
+              const { data } = await zarr.get(cArr, null)
+              const labels = parseCFTime(data, units)
+              if (labels) { timeLabels = labels; timeDimName = dim }
+            } else if (!stepLabels && TIMEDELTA_UNITS.test(units.trim())) {
+              const { data } = await zarr.get(cArr, null)
+              stepLabels = Array.from(data).map(v => formatTimedelta(v, units))
+              stepDimName = dim
+            }
+          } catch {}
+        }
+      }
 
     } catch (err) {
       console.warn('zarrita metadata read failed:', err)
@@ -489,16 +546,17 @@ async function readZarrMeta(url, store) {
     }
   }
 
-  // ── Resolve time dimension size ──────────────────────────────────────
+  // ── Resolve time/step dimension sizes from detected dim names ────────
   if (dims && shape) {
-    const tIdx = dims.findIndex(d => d === 'time' || d === 't')
+    const tIdx = dims.indexOf(timeDimName)
     if (tIdx >= 0) timeDimSize = shape[tIdx]
+    const sIdx = dims.indexOf(stepDimName)
+    if (sIdx >= 0) stepDimSize = shape[sIdx]
   } else if (shape && shape.length >= 3) {
-    // Fallback: CF convention puts time first in 3D+ arrays
     timeDimSize = shape[0]
   }
 
-  return { vars, shape, dtype, dims, timeDimSize, timeLabels, latDim, lonDim, bounds, latIsAscending, proj4String }
+  return { vars, shape, dtype, dims, timeDimSize, stepDimSize, timeDimName, stepDimName, timeLabels, stepLabels, latDim, lonDim, bounds, latIsAscending, proj4String }
 }
 
 // ---------------------------------------------------------------------------
@@ -557,7 +615,11 @@ async function renderLayer(url, store, varName, state) {
     colormap: COLORMAPS[state.cm],
     opacity: state.opacity ?? 0.85,
     zarrVersion: 3,
-    selector: { time: { selected: state.t, type: 'index' } },
+    selector: {
+      [currentMeta.timeDimName || 'time']: { selected: state.t, type: 'index' },
+      ...(currentMeta.stepDimSize > 1
+        ? { [currentMeta.stepDimName]: { selected: state.s, type: 'index' } } : {}),
+    },
     spatialDimensions: { lat: latDim, lon: lonDim },
     latIsAscending,
     bounds,
@@ -622,11 +684,22 @@ async function loadStore(url, snap) {
       map.fitBounds(geoBounds, { padding: 20, duration: 0 })
     } catch {}
 
-    // Update time slider range
+    // Update time slider
     timeSlider.max = String(Math.max(0, meta.timeDimSize - 1))
     if (appState.t >= meta.timeDimSize) appState.t = 0
     timeSlider.value = String(appState.t)
-    timeLabel.textContent = meta.timeLabels?.[appState.t] ?? String(appState.t)
+
+    // Update step slider (show only if step dimension exists)
+    const hasStep = meta.stepDimSize > 1
+    stepControl.style.display = hasStep ? 'block' : 'none'
+    if (hasStep) {
+      stepSlider.max = String(Math.max(0, meta.stepDimSize - 1))
+      if (appState.s >= meta.stepDimSize) appState.s = 0
+      stepSlider.value = String(appState.s)
+      stepLabel.textContent = meta.stepLabels?.[appState.s] ?? String(appState.s)
+    }
+
+    timeLabel.textContent = validTimeLabel(appState.t, appState.s, meta)
 
     // If var already selected (from URL param or prior state), render immediately
     const varToLoad = appState.varName && meta.vars.includes(appState.varName)
@@ -669,6 +742,7 @@ async function loadVariable(varName) {
     clim: appState.clim,
     cm: appState.cm,
     t: appState.t,
+    s: appState.s,
     opacity: parseFloat(opacitySlider.value),
   })
 }
@@ -696,10 +770,27 @@ varSelect.addEventListener('change', () => {
   if (v) loadVariable(v)
 })
 
+function currentSelector() {
+  return {
+    [currentMeta.timeDimName || 'time']: { selected: appState.t, type: 'index' },
+    ...(currentMeta.stepDimSize > 1
+      ? { [currentMeta.stepDimName]: { selected: appState.s, type: 'index' } } : {}),
+  }
+}
+
 timeSlider.addEventListener('input', debounce(() => {
   appState.t = Number(timeSlider.value)
-  timeLabel.textContent = currentMeta.timeLabels?.[appState.t] ?? String(appState.t)
-  layer?.setSelector({ time: { selected: appState.t, type: 'index' } })
+  timeLabel.textContent = validTimeLabel(appState.t, appState.s, currentMeta)
+  layer?.setSelector(currentSelector())
+  map.triggerRepaint()
+  pushParams(appState)
+}, 150))
+
+stepSlider.addEventListener('input', debounce(() => {
+  appState.s = Number(stepSlider.value)
+  stepLabel.textContent = currentMeta.stepLabels?.[appState.s] ?? String(appState.s)
+  timeLabel.textContent = validTimeLabel(appState.t, appState.s, currentMeta)
+  layer?.setSelector(currentSelector())
   map.triggerRepaint()
   pushParams(appState)
 }, 150))

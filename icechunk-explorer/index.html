@@ -184,9 +184,15 @@
       <aside>
         <div id="layer-controls">
           <div class="control-group">
-            <label>Time step</label>
+            <label>Time</label>
             <input type="range" id="time-slider" min="0" max="0" step="1" value="0" />
             <div class="value-display" id="time-label">0</div>
+          </div>
+
+          <div class="control-group" id="step-control" style="display:none">
+            <label>Step</label>
+            <input type="range" id="step-slider" min="0" max="0" step="1" value="0" />
+            <div class="value-display" id="step-label">T+0h</div>
           </div>
 
           <div class="control-group">
