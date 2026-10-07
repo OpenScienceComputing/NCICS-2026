@@ -87,7 +87,8 @@ pystac
 pystac-client
 planetary-computer
 odc-stac
-xpystac
+# main: reads Item storage:schemes from properties (unreleased as of 0.5.0)
+xpystac @ git+https://github.com/stac-utils/xpystac@main
 xstac
 rustac
 
