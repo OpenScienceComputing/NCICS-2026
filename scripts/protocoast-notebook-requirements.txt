@@ -91,6 +91,7 @@ odc-stac
 xpystac @ git+https://github.com/stac-utils/xpystac@main
 xstac
 rustac
+gribberish  # zarr codec for dynamical.org virtual (GRIB-backed) icechunk stores
 
 # Visualization
 hvplot
